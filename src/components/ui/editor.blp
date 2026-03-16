@@ -141,43 +141,119 @@ template $BrushEditor: Box {
 
                 Box {
                   orientation: vertical;
-                  spacing: 4;
+                  spacing: 10;
                   margin-top: 8;
                   margin-start: 8;
                   margin-bottom: 8;
                   margin-end: 8;
 
-                  Gtk.ToggleButton {
-                    icon-name: "move-tool-symbolic";
-                    action-name: "editor.change-tool";
-                    action-target: "'move'";
-                    can-focus: false;
+                  Box {
+                    orientation: horizontal;
+                    spacing: 4;
 
-                    styles [
-                      "osd",
-                    ]
+                    Gtk.ToggleButton {
+                      halign: start;
+                      icon-name: "move-tool-symbolic";
+                      action-name: "editor.change-tool";
+                      action-target: "'move'";
+                      can-focus: false;
+
+                      styles [
+                        "osd",
+                      ]
+                    }
+
+                    Gtk.ToggleButton {
+                      halign: end;
+                      icon-name: "paintbrush-symbolic";
+                      action-name: "editor.change-tool";
+                      action-target: "'brush'";
+                      can-focus: false;
+
+                      styles [
+                        "osd",
+                      ]
+                    }
                   }
 
-                  Gtk.ToggleButton {
-                    icon-name: "paintbrush-symbolic";
-                    action-name: "editor.change-tool";
-                    action-target: "'brush'";
-                    can-focus: false;
+                  Box {
+                    orientation: horizontal;
+                    spacing: 4;
 
-                    styles [
-                      "osd",
-                    ]
+                    Gtk.ToggleButton {
+                      halign: start;
+                      icon-name: "box-outline-symbolic";
+                      action-name: "editor.change-tool";
+                      action-target: "'box'";
+                      can-focus: false;
+
+                      styles [
+                        "osd",
+                      ]
+                    }
+
+                    Gtk.ToggleButton {
+                      halign: end;
+                      icon-name: "circle-anchor-center-symbolic";
+                      action-name: "editor.change-tool";
+                      action-target: "'ellipse'";
+                      can-focus: false;
+
+                      styles [
+                        "osd",
+                      ]
+                    }
                   }
 
-                  Gtk.ToggleButton {
-                    icon-name: "box-dotted-symbolic";
-                    action-name: "editor.change-tool";
-                    action-target: "'box_select'";
-                    can-focus: false;
+                  Box {
+                    orientation: vertical;
+                    spacing: 4;
 
-                    styles [
-                      "osd",
-                    ]
+                    Box {
+                      orientation: horizontal;
+                      spacing: 4;
+
+                      Gtk.ToggleButton {
+                        halign: start;
+                        icon-name: "box-dotted-symbolic";
+                        action-name: "editor.change-tool";
+                        action-target: "'box_select'";
+                        can-focus: false;
+
+                        styles [
+                          "osd",
+                        ]
+                      }
+
+                      Gtk.ToggleButton {
+                        halign: end;
+                        icon-name: "circle-dotted-symbolic";
+                        action-name: "editor.change-tool";
+                        action-target: "'lasso_select'";
+                        can-focus: false;
+
+                        styles [
+                          "osd",
+                        ]
+                      }
+                    }
+
+                    Box {
+                      orientation: horizontal;
+                      spacing: 4;
+
+                      Gtk.ToggleButton {
+                        halign: start;
+                        icon-name: "magic-wand-symbolic";
+                        action-name: "editor.change-tool";
+                        action-target: "'wand_select'";
+                        can-focus: false;
+
+                        styles [
+                          "osd",
+                        ]
+                      }
+                    }
                   }
                 }
               }

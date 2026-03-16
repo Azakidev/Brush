@@ -127,26 +127,6 @@ mod imp {
             });
 
             klass.install_property_action("editor.change-tool", "active_tool");
-
-            klass.install_action("editor.zoom-in", None, move |editor, _, _| {
-                let _ = editor
-                    .imp()
-                    .tab_view
-                    .selected_page()
-                    .unwrap()
-                    .child()
-                    .activate_action("canvas.zoom-in", None);
-            });
-
-            klass.install_action("editor.zoom-out", None, move |editor, _, _| {
-                let _ = editor
-                    .imp()
-                    .tab_view
-                    .selected_page()
-                    .unwrap()
-                    .child()
-                    .activate_action("canvas.zoom-out", None);
-            });
         }
 
         fn instance_init(obj: &glib::subclass::InitializingObject<Self>) {
@@ -322,22 +302,6 @@ impl BrushEditor {
                 let _ = widget.activate_action("editor.change-tool", Some(&"brush".to_variant()));
                 glib::Propagation::Stop
             })),
-        ));
-
-        imp.shortcut_controller.add_shortcut(gtk::Shortcut::new(
-            Some(gtk::KeyvalTrigger::new(
-                gdk::Key::minus,
-                gdk::ModifierType::NO_MODIFIER_MASK,
-            )),
-            Some(gtk::NamedAction::new("editor.zoom-out")),
-        ));
-
-        imp.shortcut_controller.add_shortcut(gtk::Shortcut::new(
-            Some(gtk::KeyvalTrigger::new(
-                gdk::Key::equal,
-                gdk::ModifierType::NO_MODIFIER_MASK,
-            )),
-            Some(gtk::NamedAction::new("editor.zoom-in")),
         ));
 
         imp.shortcut_controller.add_shortcut(gtk::Shortcut::new(

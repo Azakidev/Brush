@@ -1,4 +1,4 @@
-/* editor.rs
+/* editor.rseditorc
  *
  * Copyright 2026 FatDawlf
  *
@@ -21,11 +21,15 @@
 use adw::prelude::*;
 use adw::subclass::prelude::*;
 use glow::{Context, HasContext, NativeVertexArray, PixelUnpackData, Program};
-use gtk::glib::{self, clone, Properties};
+use gtk::{
+    gdk,
+    glib::{self, clone, Properties},
+};
 use libloading::Library;
 use std::{
     cell::{Cell, OnceCell, RefCell},
     collections::HashMap,
+    f32::consts::PI,
     rc::Rc,
 };
 use uuid::Uuid;
@@ -80,6 +84,22 @@ mod imp {
             klass.install_action("canvas.zoom-out", None, move |content, _, _| {
                 content.zoom_by(-0.05f32);
             });
+
+            klass.install_action("canvas.zoom-to-fit", None, move |content, _, _| {
+                content.zoom_to_fit();
+            });
+
+            klass.install_action("canvas.rotate-right", None, move |content, _, _| {
+                content.rotate_by(PI / 5f32);
+            });
+
+            klass.install_action("canvas.rotate-left", None, move |content, _, _| {
+                content.rotate_by(PI / -5f32);
+            });
+
+            klass.install_action("canvas.rotate-reset", None, move |content, _, _| {
+                content.rotate_to(0f32);
+            });
         }
 
         fn instance_init(obj: &glib::subclass::InitializingObject<Self>) {
@@ -105,6 +125,7 @@ mod imp {
 
             let obj = self.obj();
 
+            obj.setup_accels_controller();
             obj.setup_motion_controller();
             obj.setup_scroll_controller();
             obj.setup_drag_controller();
@@ -434,13 +455,13 @@ impl BrushEditorContent {
 
     // Viewport control
     pub fn zoom_by(&self, factor: f32) {
-        let new_zoom = (self.imp().zoom.get() + factor).max(0.1);
+        let new_zoom = (self.imp().zoom.get() + factor).clamp(0.1, 10f32);
         self.imp().zoom.set(new_zoom);
         self.imp().canvas.queue_draw();
     }
 
     pub fn zoom_to(&self, zoom: f32) {
-        self.imp().zoom.set(zoom);
+        self.imp().zoom.set(zoom.clamp(0.1, 10f32));
         self.imp().canvas.queue_draw();
     }
 
@@ -456,7 +477,7 @@ impl BrushEditorContent {
     }
 
     pub fn rotate_by(&self, radians: f32) {
-        let new_rot = self.imp().rotation.get() + radians;
+        let new_rot = (self.imp().rotation.get() + radians) % (PI * 2f32);
         self.imp().rotation.set(new_rot);
         self.imp().canvas.queue_draw();
     }
@@ -464,6 +485,24 @@ impl BrushEditorContent {
     pub fn rotate_to(&self, radians: f32) {
         self.imp().rotation.set(radians);
         self.imp().canvas.queue_draw();
+    }
+
+    pub fn zoom_to_fit(&self) {
+        let imp = self.imp();
+        let (canvas_width, canvas_height) = (
+            imp.context.borrow().width as f32,
+            imp.context.borrow().height as f32,
+        );
+        let (viewport_width, viewport_height) = (self.width() as f32, self.height() as f32);
+
+        let scale_x = viewport_width / canvas_width;
+        let scale_y = viewport_height / canvas_height;
+
+        let scale = scale_x.min(scale_y);
+
+        self.zoom_to(scale);
+        self.move_to(0f32, 0f32);
+        imp.canvas.get().queue_draw();
     }
 
     pub fn setup_drag_controller(&self) {
@@ -517,6 +556,61 @@ impl BrushEditorContent {
         self.add_controller(motion);
     }
 
+    pub fn setup_accels_controller(&self) {
+        let controller = gtk::ShortcutController::new();
+        controller.set_scope(gtk::ShortcutScope::Global);
+
+        controller.add_shortcut(gtk::Shortcut::new(
+            Some(gtk::KeyvalTrigger::new(
+                gdk::Key::minus,
+                gdk::ModifierType::NO_MODIFIER_MASK,
+            )),
+            Some(gtk::NamedAction::new("canvas.zoom-out")),
+        ));
+
+        controller.add_shortcut(gtk::Shortcut::new(
+            Some(gtk::KeyvalTrigger::new(
+                gdk::Key::equal,
+                gdk::ModifierType::NO_MODIFIER_MASK,
+            )),
+            Some(gtk::NamedAction::new("canvas.zoom-in")),
+        ));
+
+        controller.add_shortcut(gtk::Shortcut::new(
+            Some(gtk::KeyvalTrigger::new(
+                gdk::Key::Home,
+                gdk::ModifierType::NO_MODIFIER_MASK,
+            )),
+            Some(gtk::NamedAction::new("canvas.zoom-to-fit")),
+        ));
+
+        controller.add_shortcut(gtk::Shortcut::new(
+            Some(gtk::KeyvalTrigger::new(
+                gdk::Key::bracketleft,
+                gdk::ModifierType::CONTROL_MASK,
+            )),
+            Some(gtk::NamedAction::new("canvas.rotate-left")),
+        ));
+
+        controller.add_shortcut(gtk::Shortcut::new(
+            Some(gtk::KeyvalTrigger::new(
+                gdk::Key::bracketright,
+                gdk::ModifierType::CONTROL_MASK,
+            )),
+            Some(gtk::NamedAction::new("canvas.rotate-right")),
+        ));
+
+        controller.add_shortcut(gtk::Shortcut::new(
+            Some(gtk::KeyvalTrigger::new(
+                gdk::Key::Home,
+                gdk::ModifierType::SHIFT_MASK,
+            )),
+            Some(gtk::NamedAction::new("canvas.rotate-reset")),
+        ));
+
+        self.add_controller(controller);
+    }
+
     pub fn setup_scroll_controller(&self) {
         let scroll = gtk::EventControllerScroll::new(gtk::EventControllerScrollFlags::VERTICAL);
 
@@ -537,17 +631,17 @@ impl BrushEditorContent {
             let (old_x, old_y) = imp.position.get();
 
             let zoom_mult = if dy < 0.0 { 1.1 } else { 0.9 };
-            let zoom = (old_zoom * zoom_mult).clamp(0.01, 100.0);
+            let zoom = (old_zoom * zoom_mult).clamp(0.001, 100.0);
 
             let actual_factor = zoom / old_zoom;
 
             let new_x = mouse_x - win_w / 2.0 - actual_factor * (mouse_x - win_w / 2.0 - old_x);
             let new_y = mouse_y - win_h / 2.0 - actual_factor * (mouse_y - win_h / 2.0 - old_y);
 
-            imp.zoom.set(zoom);
-            imp.position.set((new_x, new_y));
-
+            obj.zoom_to(zoom);
+            obj.move_to(new_x, new_y);
             obj.imp().canvas.queue_draw();
+
             glib::Propagation::Stop
         });
 

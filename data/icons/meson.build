@@ -15,17 +15,12 @@ install_data(
 actions_dir = 'hicolor' / 'scalable' / 'actions'
 install_data(
   actions_dir / 'paintbrush-symbolic.svg',
-  install_dir: get_option('datadir') / 'icons' / actions_dir
-)
-install_data(
   actions_dir / 'box-dotted-symbolic.svg',
-  install_dir: get_option('datadir') / 'icons' / actions_dir
-)
-install_data(
   actions_dir / 'move-tool-symbolic.svg',
-  install_dir: get_option('datadir') / 'icons' / actions_dir
-)
-install_data(
   actions_dir / 'pointer-secondary-click-symbolic.svg',
+  actions_dir / 'box-outline-symbolic.svg',
+  actions_dir / 'circle-anchor-center-symbolic.svg',
+  actions_dir / 'circle-dotted-symbolic.svg',
+  actions_dir / 'magic-wand-symbolic.svg',
   install_dir: get_option('datadir') / 'icons' / actions_dir
 )
