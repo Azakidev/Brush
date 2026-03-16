@@ -1,0 +1,15 @@
+using Gtk 4.0;
+using Adw 1;
+
+template $BrushEditorContent: Adw.Bin {
+  vexpand: true;
+  hexpand: true;
+
+  GLArea canvas {
+    vexpand: true;
+    hexpand: true;
+    has-depth-buffer: false;
+    width-request: 400;
+    height-request: 400;
+  }
+}

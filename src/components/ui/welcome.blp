@@ -1,0 +1,67 @@
+using Gtk 4.0;
+using Adw 1;
+
+template $BrushWelcome: Box {
+  orientation: vertical;
+
+  Adw.ToolbarView {
+    [top]
+    Adw.HeaderBar {
+      [end]
+      MenuButton {
+        primary: true;
+        icon-name: "open-menu-symbolic";
+        tooltip-text: _("Main Menu");
+        menu-model: primary_menu;
+      }
+    }
+
+    content: Box {
+      orientation: vertical;
+      vexpand: true;
+      valign: center;
+      halign: center;
+
+      Adw.StatusPage {
+        hexpand: true;
+        icon-name: "art.FatDawlf.Brush";
+        title: _("Brush");
+      }
+
+      Box {
+        valign: center;
+        halign: center;
+        orientation: horizontal;
+
+        Button open_editor {
+          label: _("Editor");
+          action-name: "win.new-document";
+
+          styles [
+            "pill",
+            "suggested-action",
+          ]
+        }
+      }
+    };
+  }
+}
+
+menu primary_menu {
+  section {
+    item {
+      label: _("_Preferences");
+      action: "app.preferences";
+    }
+
+    item {
+      label: _("_Keyboard Shortcuts");
+      action: "app.shortcuts";
+    }
+
+    item {
+      label: _("_About Brush");
+      action: "app.about";
+    }
+  }
+}

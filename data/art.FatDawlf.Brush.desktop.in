@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=brush
+Exec=brush
+Icon=art.FatDawlf.Brush
+Terminal=false
+Type=Application
+Categories=Utility;
+Keywords=GTK;
+StartupNotify=true
+DBusActivatable=true

@@ -1,0 +1,28 @@
+using Gtk 4.0;
+using Adw 1;
+
+template $BrushWindow: Adw.ApplicationWindow {
+  title: _("Brush");
+  default-width: 800;
+  default-height: 600;
+
+  content: Adw.ToastOverlay toast_overlay {
+    Adw.ViewStack view_stack {
+      enable-transitions: true;
+
+      Adw.ViewStackPage {
+        name: "welcome";
+        title: _("Welcome to Brush");
+
+        child: $BrushWelcome welcome {};
+      }
+
+      Adw.ViewStackPage {
+        name: "editor";
+        title: _("Welcome to Brush");
+
+        child: $BrushEditor editor {};
+      }
+    }
+  };
+}

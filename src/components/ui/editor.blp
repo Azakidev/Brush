@@ -1,0 +1,211 @@
+using Gtk 4.0;
+using Adw 1;
+
+template $BrushEditor: Box {
+  orientation: vertical;
+  can-focus: true;
+
+  Adw.TabOverview tab_overview {
+    view: tab_view;
+    enable-new-tab: false;
+
+    ShortcutController shortcut_controller {
+      scope: managed;
+    }
+
+    child: Box {
+      orientation: vertical;
+
+      Adw.ToolbarView toolbar_view {
+        hexpand: true;
+        reveal-top-bars: true;
+
+        [top]
+        Adw.HeaderBar header_bar {
+          show-title: true;
+
+          title-widget: Adw.WindowTitle title {};
+
+          [start]
+          Box {
+            styles [
+              "linked",
+            ]
+
+            Button new_document {
+              icon-name: "document-new-symbolic";
+              action-name: "win.new-document";
+              can-focus: false;
+            }
+
+            Button open_document {
+              icon-name: "folder-open-symbolic";
+              action-name: "win.open-document";
+              can-focus: false;
+            }
+
+            Button save_document {
+              icon-name: "media-floppy-symbolic";
+              action-name: "editor.save-document";
+              can-focus: false;
+            }
+          }
+
+          [start]
+          $BrushColorChip primary_chip {}
+
+          [start]
+          $BrushColorChip secondary_chip {}
+
+          [end]
+          MenuButton {
+            primary: true;
+            icon-name: "open-menu-symbolic";
+            tooltip-text: _("Main Menu");
+            menu-model: primary_menu;
+            can-focus: false;
+          }
+
+          [end]
+          Adw.TabButton button_overview {
+            view: tab_view;
+            action-name: "overview.open";
+            can-focus: false;
+          }
+        }
+
+        [top]
+        Adw.TabBar {
+          view: tab_view;
+          autohide: true;
+        }
+
+        content: Adw.OverlaySplitView left_split {
+          sidebar-position: start;
+
+          sidebar: Adw.NavigationPage {
+            title: _("Left bar");
+
+            styles [
+              "background",
+              "leftBar",
+            ]
+
+            Box {
+              orientation: vertical;
+              hexpand: true;
+
+              Label {
+                label: _("Left Bar");
+
+                styles [
+                  "title-2",
+                ]
+              }
+            }
+          };
+
+          content: Adw.OverlaySplitView right_split {
+            sidebar-position: end;
+
+            sidebar: Adw.NavigationPage {
+              title: _("Right bar");
+
+              styles [
+                "background",
+                "rightBar",
+              ]
+
+              Box {
+                orientation: vertical;
+                hexpand: true;
+
+                Label {
+                  label: _("Right Bar");
+
+                  styles [
+                    "title-2",
+                  ]
+                }
+              }
+            };
+
+            content: Overlay {
+              [overlay]
+              Revealer toolbox_revealer {
+                reveal-child: true;
+                transition-type: slide_right;
+                transition-duration: 100;
+                valign: start;
+                halign: start;
+
+                Box {
+                  orientation: vertical;
+                  spacing: 4;
+                  margin-top: 8;
+                  margin-start: 8;
+                  margin-bottom: 8;
+                  margin-end: 8;
+
+                  Gtk.ToggleButton {
+                    icon-name: "move-tool-symbolic";
+                    action-name: "editor.change-tool";
+                    action-target: "'move'";
+                    can-focus: false;
+
+                    styles [
+                      "osd",
+                    ]
+                  }
+
+                  Gtk.ToggleButton {
+                    icon-name: "paintbrush-symbolic";
+                    action-name: "editor.change-tool";
+                    action-target: "'brush'";
+                    can-focus: false;
+
+                    styles [
+                      "osd",
+                    ]
+                  }
+
+                  Gtk.ToggleButton {
+                    icon-name: "box-dotted-symbolic";
+                    action-name: "editor.change-tool";
+                    action-target: "'box_select'";
+                    can-focus: false;
+
+                    styles [
+                      "osd",
+                    ]
+                  }
+                }
+              }
+
+              Adw.TabView tab_view {}
+            };
+          };
+        };
+      }
+    };
+  }
+}
+
+menu primary_menu {
+  section {
+    item {
+      label: _("_Preferences");
+      action: "app.preferences";
+    }
+
+    item {
+      label: _("_Keyboard Shortcuts");
+      action: "app.shortcuts";
+    }
+
+    item {
+      label: _("_About Brush");
+      action: "app.about";
+    }
+  }
+}

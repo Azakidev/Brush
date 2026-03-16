@@ -1,0 +1,61 @@
+using Gtk 4.0;
+using Adw 1;
+
+Adw.ShortcutsDialog shortcuts_dialog {
+  Adw.ShortcutsSection {
+    title: _("Basic Shortcuts");
+
+    Adw.ShortcutsItem {
+      title: C_("shortcut window", "Show Shortcuts");
+      action-name: "app.shortcuts";
+    }
+
+    Adw.ShortcutsItem {
+      title: C_("shortcut window", "Quit");
+      action-name: "app.quit";
+    }
+  }
+
+  Adw.ShortcutsSection {
+    title: _("Tab Management");
+
+    Adw.ShortcutsItem {
+      title: C_("shortcut window", "New Tab");
+      accelerator: "<Ctrl>T";
+    }
+
+    Adw.ShortcutsItem {
+      title: C_("shortcut window", "Close Tab");
+      accelerator: "<Ctrl>W";
+    }
+  }
+
+  Adw.ShortcutsSection {
+    title: _("Editor");
+
+    Adw.ShortcutsItem {
+      title: C_("shortcut window", "Canvas only");
+      accelerator: "Tab";
+    }
+
+    Adw.ShortcutsItem {
+      title: C_("shortcut window", "Toggle toolbox");
+      accelerator: "N";
+    }
+
+    Adw.ShortcutsItem {
+      title: C_("shortcut window", "Swap colors");
+      accelerator: "X";
+    }
+
+    Adw.ShortcutsItem {
+      title: C_("shortcut window", "Brush Tool");
+      accelerator: "B";
+    }
+
+    Adw.ShortcutsItem {
+      title: C_("shortcut window", "Box select Tool");
+      accelerator: "A";
+    }
+  }
+}

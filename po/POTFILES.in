@@ -1,0 +1,6 @@
+# List of source files containing translatable strings.
+# Please keep this file sorted alphabetically.
+data/art.FatDawlf.Brush.desktop.in
+data/art.FatDawlf.Brush.metainfo.xml.in
+data/art.FatDawlf.Brush.gschema.xml
+src/window.blp
