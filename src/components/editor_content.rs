@@ -129,7 +129,8 @@ mod imp {
             obj.setup_motion_controller();
             obj.setup_scroll_controller();
             obj.setup_drag_controller();
-            obj.setup_scroll_controller();
+            obj.setup_pinch_controller();
+            obj.setup_rotate_controller();
 
             // Layer setup test
             {
@@ -505,6 +506,53 @@ impl BrushEditorContent {
         self.move_to(0f32, 0f32);
         imp.canvas.get().queue_draw();
     }
+    
+    pub fn setup_rotate_controller(&self) {
+        let controller = gtk::GestureRotate::new();
+
+        let start_rotate = Rc::new(Cell::new(0f32));
+        let should_rotate = Rc::new(Cell::new(false));
+
+        controller.connect_begin(clone!(
+            #[weak(rename_to = obj)]
+            self,
+            #[weak]
+            start_rotate,
+            #[weak]
+            should_rotate,
+            move |_, _| {
+                let rotation = obj.imp().rotation.get();
+                start_rotate.set(rotation);
+                should_rotate.set(false);
+            }
+        ));
+
+        controller.connect_angle_changed(clone!(
+            #[weak(rename_to = obj)]
+            self,
+            #[strong]
+            start_rotate,
+            #[strong]
+            should_rotate,
+            move |controller, _, _| {
+                let orig_rot = start_rotate.get();
+
+                let angle = controller.angle_delta() as f32;
+
+                if angle.abs() > PI/20f32 {
+                    should_rotate.set(true)
+                }
+
+                if should_rotate.get() {
+                    obj.rotate_to(orig_rot + angle);
+
+                    obj.imp().canvas.queue_draw();
+                }
+            }
+        ));
+
+        self.add_controller(controller);
+    }
 
     pub fn setup_pinch_controller(&self) {
         let controller = gtk::GestureZoom::new();
@@ -530,11 +578,7 @@ impl BrushEditorContent {
             move |_, zoom| {
                 let orig_zoom = start_zoom.get();
 
-                let tool = obj.imp().active_tool.borrow();
-
-                if tool.contains("move") {
-                    obj.zoom_to(orig_zoom + zoom as f32);
-                }
+                obj.zoom_to(orig_zoom * zoom as f32);
 
                 obj.imp().canvas.queue_draw();
             }
