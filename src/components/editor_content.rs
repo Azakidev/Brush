@@ -557,6 +557,7 @@ impl BrushEditorContent {
 
         let start_zoom = Rc::new(Cell::new(0f32));
         let start_pos = Rc::new(Cell::new((0f32, 0f32)));
+        let start_drag = Rc::new(Cell::new((0f32, 0f32)));
 
         controller.connect_begin(clone!(
             #[weak(rename_to = obj)]
@@ -565,10 +566,17 @@ impl BrushEditorContent {
             start_zoom,
             #[weak]
             start_pos,
-            move |_, _| {
+            #[weak]
+            start_drag,
+            move |gesture, _| {
                 let imp = obj.imp();
+
                 start_zoom.set(imp.zoom.get());
                 start_pos.set(imp.position.get());
+
+                if let Some((x, y)) = gesture.bounding_box_center() {
+                    start_drag.set((x as f32, y as f32));
+                }
             }
         ));
 
@@ -579,22 +587,26 @@ impl BrushEditorContent {
             start_zoom,
             #[strong]
             start_pos,
+            #[strong]
+            start_drag,
             move |gesture, zoom| {
                 let orig_zoom = start_zoom.get();
-                obj.zoom_to(orig_zoom * zoom as f32);
+                let new_zoom = orig_zoom * zoom as f32;
+
+                obj.zoom_to(new_zoom);
 
                 if let Some((center_x, center_y)) = gesture.bounding_box_center() {
-                    let (win_w, win_h) = (obj.width() as f32, obj.height() as f32);
-                    let (old_x, old_y) = start_pos.get();
 
-                    let factor = zoom as f32 / orig_zoom;
-                    let dx = center_x as f32 - (win_w / 2.0);
-                    let dy = center_y as f32 - (win_h / 2.0);
+                    let (old_x, old_y) = start_drag.get();
+                    let (canvas_old_x, canvas_old_y) = start_pos.get();
 
-                    let new_pos_x = dx - factor * (dx - old_x);
-                    let new_pos_y = dy - factor * (dy - old_y);
+                    let dx = center_x as f32 - old_x;
+                    let dy = center_y as f32 - old_y;
+                    
+                    let new_x = canvas_old_x + dx * zoom as f32;
+                    let new_y = canvas_old_y + dy * zoom as f32;
 
-                    obj.move_to(new_pos_x, new_pos_y);
+                    obj.move_to(new_x, new_y);
                 }
 
                 obj.imp().canvas.queue_draw();
