@@ -52,10 +52,20 @@ template $BrushEditor: Box {
           }
 
           [start]
-          $BrushColorChip primary_chip {}
+          Box {
+            orientation: horizontal;
+            spacing: 4;
 
-          [start]
-          $BrushColorChip secondary_chip {}
+            $BrushColorChip primary_chip {}
+
+            $BrushColorChip secondary_chip {}
+
+            Button swap_colors {
+              icon-name: "double-ended-arrows-horizontal-symbolic";
+              action-name: "editor.swap-colors";
+              can-focus: false;
+            }
+          }
 
           [end]
           MenuButton {

@@ -22,5 +22,6 @@ install_data(
   actions_dir / 'circle-anchor-center-symbolic.svg',
   actions_dir / 'circle-dotted-symbolic.svg',
   actions_dir / 'magic-wand-symbolic.svg',
+  actions_dir / 'double-ended-arrows-horizontal-symbolic.svg',
   install_dir: get_option('datadir') / 'icons' / actions_dir
 )

@@ -1,4 +1,4 @@
-/* editor.rseditorc
+/* editor.rs
  *
  * Copyright 2026 FatDawlf
  *
@@ -129,6 +129,7 @@ mod imp {
             obj.setup_motion_controller();
             obj.setup_scroll_controller();
             obj.setup_drag_controller();
+            obj.setup_scroll_controller();
 
             // Layer setup test
             {
@@ -505,6 +506,43 @@ impl BrushEditorContent {
         imp.canvas.get().queue_draw();
     }
 
+    pub fn setup_pinch_controller(&self) {
+        let controller = gtk::GestureZoom::new();
+
+        let start_zoom = Rc::new(Cell::new(0f32));
+
+        controller.connect_begin(clone!(
+            #[weak(rename_to = obj)]
+            self,
+            #[weak]
+            start_zoom,
+            move |_, _| {
+                let zoom = obj.imp().zoom.get();
+                start_zoom.set(zoom);
+            }
+        ));
+
+        controller.connect_scale_changed(clone!(
+            #[weak(rename_to = obj)]
+            self,
+            #[strong]
+            start_zoom,
+            move |_, zoom| {
+                let orig_zoom = start_zoom.get();
+
+                let tool = obj.imp().active_tool.borrow();
+
+                if tool.contains("move") {
+                    obj.zoom_to(orig_zoom + zoom as f32);
+                }
+
+                obj.imp().canvas.queue_draw();
+            }
+        ));
+
+        self.add_controller(controller);
+    }
+
     pub fn setup_drag_controller(&self) {
         let drag = gtk::GestureDrag::new();
 
@@ -532,9 +570,7 @@ impl BrushEditorContent {
                 let tool = obj.imp().active_tool.borrow();
 
                 if tool.contains("move") {
-                    obj.imp()
-                        .position
-                        .set((orig_x + offset_x as f32, orig_y + offset_y as f32));
+                    obj.move_to(orig_x + offset_x as f32, orig_y + offset_y as f32);
                 }
 
                 obj.imp().canvas.queue_draw();
