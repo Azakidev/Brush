@@ -256,11 +256,10 @@ impl BrushEditorContent {
         gl.enable_vertex_attrib_array(0);
         gl.vertex_attrib_pointer_f32(0, 2, glow::FLOAT, false, 16, 0);
 
-        // TexCoords attribute
+        // Texture coordinates attribute
         gl.enable_vertex_attrib_array(1);
         gl.vertex_attrib_pointer_f32(1, 2, glow::FLOAT, false, 16, 8);
 
-        // Store these in your RefCell/OnceCell in the Imp
         let _ = self.imp().gl_program.set(program);
         let _ = self.imp().gl_vao.set(vao);
     }
@@ -306,7 +305,6 @@ impl BrushEditorContent {
 
             gl.viewport(0, 0, win_w as i32, win_h as i32);
             gl.clear_color(0.1, 0.1, 0.1, 1.0); // Dark background
-            gl.disable(glow::DEPTH_TEST);
             gl.clear(glow::COLOR_BUFFER_BIT);
 
             let projection = glam::Mat4::orthographic_lh(0.0, win_w, win_h, 0.0, -1.0, 1.0);
@@ -506,7 +504,7 @@ impl BrushEditorContent {
         self.move_to(0f32, 0f32);
         imp.canvas.get().queue_draw();
     }
-    
+
     pub fn setup_rotate_controller(&self) {
         let controller = gtk::GestureRotate::new();
 
@@ -539,7 +537,7 @@ impl BrushEditorContent {
 
                 let angle = controller.angle_delta() as f32;
 
-                if angle.abs() > PI/20f32 {
+                if angle.abs() > PI / 20f32 {
                     should_rotate.set(true)
                 }
 
@@ -558,15 +556,19 @@ impl BrushEditorContent {
         let controller = gtk::GestureZoom::new();
 
         let start_zoom = Rc::new(Cell::new(0f32));
+        let start_pos = Rc::new(Cell::new((0f32, 0f32)));
 
         controller.connect_begin(clone!(
             #[weak(rename_to = obj)]
             self,
             #[weak]
             start_zoom,
+            #[weak]
+            start_pos,
             move |_, _| {
-                let zoom = obj.imp().zoom.get();
-                start_zoom.set(zoom);
+                let imp = obj.imp();
+                start_zoom.set(imp.zoom.get());
+                start_pos.set(imp.position.get());
             }
         ));
 
@@ -575,10 +577,25 @@ impl BrushEditorContent {
             self,
             #[strong]
             start_zoom,
-            move |_, zoom| {
+            #[strong]
+            start_pos,
+            move |gesture, zoom| {
                 let orig_zoom = start_zoom.get();
-
                 obj.zoom_to(orig_zoom * zoom as f32);
+
+                if let Some((center_x, center_y)) = gesture.bounding_box_center() {
+                    let (win_w, win_h) = (obj.width() as f32, obj.height() as f32);
+                    let (old_x, old_y) = start_pos.get();
+
+                    let factor = zoom as f32 / orig_zoom;
+                    let dx = center_x as f32 - (win_w / 2.0);
+                    let dy = center_y as f32 - (win_h / 2.0);
+
+                    let new_pos_x = dx - factor * (dx - old_x);
+                    let new_pos_y = dy - factor * (dy - old_y);
+
+                    obj.move_to(new_pos_x, new_pos_y);
+                }
 
                 obj.imp().canvas.queue_draw();
             }
@@ -713,10 +730,10 @@ impl BrushEditorContent {
             let zoom_mult = if dy < 0.0 { 1.1 } else { 0.9 };
             let zoom = (old_zoom * zoom_mult).clamp(0.001, 100.0);
 
-            let actual_factor = zoom / old_zoom;
+            let factor = zoom / old_zoom;
 
-            let new_x = mouse_x - win_w / 2.0 - actual_factor * (mouse_x - win_w / 2.0 - old_x);
-            let new_y = mouse_y - win_h / 2.0 - actual_factor * (mouse_y - win_h / 2.0 - old_y);
+            let new_x = mouse_x - win_w / 2.0 - factor * (mouse_x - win_w / 2.0 - old_x);
+            let new_y = mouse_y - win_h / 2.0 - factor * (mouse_y - win_h / 2.0 - old_y);
 
             obj.zoom_to(zoom);
             obj.move_to(new_x, new_y);
