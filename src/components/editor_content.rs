@@ -18,12 +18,11 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-use adw::prelude::*;
-use adw::subclass::prelude::*;
+use adw::{prelude::*, subclass::prelude::*};
 use glow::{Context, HasContext, NativeVertexArray, PixelUnpackData, Program};
 use gtk::{
     gdk,
-    glib::{self, clone, Properties},
+    glib::{self, clone},
 };
 use libloading::Library;
 use std::{
@@ -34,26 +33,28 @@ use std::{
 };
 use uuid::Uuid;
 
-use crate::components::utils::renderer::shader::{compile_shader, FRAG_SRC, VERT_SRC};
-use crate::data::file::BrushProject;
-use crate::data::layer::Layer;
+use crate::{
+    components::utils::{
+        editor_state::BrushEditorState,
+        renderer::shader::{compile_shader, FRAG_SRC, VERT_SRC},
+        tools::BrushTool,
+    },
+    data::{file::BrushProject, layer::Layer},
+};
 
 mod imp {
 
     use super::*;
 
     #[allow(dead_code)]
-    #[derive(Default, Debug, Properties, gtk::CompositeTemplate)]
+    #[derive(Default, Debug, gtk::CompositeTemplate)]
     #[template(resource = "/art/FatDawlf/Brush/editor-content.ui")]
-    #[properties(wrapper_type= super::BrushEditorContent)]
     pub struct BrushEditorContent {
         // Template widgets
         #[template_child]
         pub canvas: TemplateChild<gtk::GLArea>,
-        // Properties
-        #[property(get, set)]
-        pub active_tool: RefCell<String>,
         // Project context
+        pub editor_state: OnceCell<Rc<RefCell<BrushEditorState>>>,
         pub context: RefCell<BrushProject>,
         pub texture_cache: RefCell<HashMap<Uuid, glow::Texture>>,
         // Gl context
@@ -108,18 +109,6 @@ mod imp {
     }
 
     impl ObjectImpl for BrushEditorContent {
-        fn properties() -> &'static [glib::ParamSpec] {
-            Self::derived_properties()
-        }
-
-        fn set_property(&self, id: usize, value: &glib::Value, pspec: &glib::ParamSpec) {
-            self.derived_set_property(id, value, pspec);
-        }
-
-        fn property(&self, id: usize, pspec: &glib::ParamSpec) -> glib::Value {
-            self.derived_property(id, pspec)
-        }
-
         fn constructed(&self) {
             self.parent_constructed();
 
@@ -214,8 +203,25 @@ glib::wrapper! {
 }
 
 impl BrushEditorContent {
-    pub fn new() -> Self {
-        glib::Object::new()
+    pub fn new(editor_state: Rc<RefCell<BrushEditorState>>) -> Self {
+        let obj: Self = glib::Object::new();
+        obj.imp()
+            .editor_state
+            .set(editor_state)
+            .expect("Editor state already set");
+        obj
+    }
+
+    pub fn project_context(&self) -> Rc<RefCell<BrushProject>> {
+        Rc::new(self.imp().context.clone())
+    }
+
+    pub fn zoom(&self) -> f32 {
+        self.imp().zoom.get()
+    }
+
+    pub fn rotation(&self) -> f32 {
+        self.imp().rotation.get()
     }
 
     unsafe fn setup_program(&self) {
@@ -596,13 +602,12 @@ impl BrushEditorContent {
                 obj.zoom_to(new_zoom);
 
                 if let Some((center_x, center_y)) = gesture.bounding_box_center() {
-
                     let (old_x, old_y) = start_drag.get();
                     let (canvas_old_x, canvas_old_y) = start_pos.get();
 
                     let dx = center_x as f32 - old_x;
                     let dy = center_y as f32 - old_y;
-                    
+
                     let new_x = canvas_old_x + dx * zoom as f32;
                     let new_y = canvas_old_y + dy * zoom as f32;
 
@@ -640,10 +645,12 @@ impl BrushEditorContent {
             move |_, offset_x, offset_y| {
                 let (orig_x, orig_y) = start_pos.get();
 
-                let tool = obj.imp().active_tool.borrow();
+                if let Some(state) = obj.imp().editor_state.get() {
+                    let state = state.borrow();
 
-                if tool.contains("move") {
-                    obj.move_to(orig_x + offset_x as f32, orig_y + offset_y as f32);
+                    if state.tool.borrow().eq(&BrushTool::Move) {
+                        obj.move_to(orig_x + offset_x as f32, orig_y + offset_y as f32);
+                    }
                 }
 
                 obj.imp().canvas.queue_draw();

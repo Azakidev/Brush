@@ -24,7 +24,7 @@ use color::{Hsl, Oklab, OpaqueColor};
 
 use crate::components::utils::tools::BrushTool;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 #[allow(dead_code)]
 pub struct BrushEditorState {
     pub tool: RefCell<BrushTool>,

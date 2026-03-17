@@ -18,19 +18,25 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-use adw::prelude::WidgetExt;
-use adw::subclass::prelude::*;
+use adw::{prelude::WidgetExt, subclass::prelude::*};
 use gtk::{
     gdk, gio,
-    glib::{self, object::ObjectExt, types::StaticType, variant::ToVariant},
+    glib::{self, object::ObjectExt, property::PropertySet, types::StaticType, variant::ToVariant},
 };
-use std::{cell::RefCell, rc::Rc};
+use std::{
+    cell::{Cell, RefCell},
+    rc::Rc,
+};
 
-use crate::components::editor_content::BrushEditorContent;
-use crate::components::utils::color::oklab_to_rgba;
-use crate::components::{color_chip::BrushColorChip, utils::editor_state::BrushEditorState};
+use crate::components::{
+    color_chip::BrushColorChip,
+    editor_content::BrushEditorContent,
+    utils::{color::oklab_to_rgba, editor_state::BrushEditorState},
+};
+use crate::data::file::BrushProject;
 
 mod imp {
+    use gtk::glib::{clone, object::Cast};
 
     use super::*;
 
@@ -65,6 +71,11 @@ mod imp {
 
         // State
         pub editor_state: Rc<RefCell<BrushEditorState>>,
+        pub current_project: Rc<RefCell<BrushProject>>,
+        pub current_zoom: Rc<Cell<f32>>,
+        pub current_rotation: Rc<Cell<f32>>,
+
+        // Properties
         #[property(get, set)]
         active_tool: RefCell<String>,
         #[property(get, set)]
@@ -181,13 +192,21 @@ mod imp {
             {
                 let title = self.title.get();
 
-                self.tab_view.connect_selected_page_notify(move |view| {
+                self.tab_view.connect_selected_page_notify(clone!(
+                        #[weak(rename_to = obj)]
+                        self,
+                        move |view| {
                     if let Some(page) = view.selected_page() {
                         page.bind_property("title", &title, "title")
                             .sync_create()
                             .build();
+
+                        let child = page.child();
+                        if let Ok(canvas_tab) = child.downcast::<BrushEditorContent>() {
+                            obj.obj().sync_project(&canvas_tab);
+                        }
                     }
-                });
+                }));
 
                 self.tab_view.connect_page_detached(move |tab_view, _, _| {
                     let _ = tab_view.activate_action("win.should-close-editor", None);
@@ -249,6 +268,19 @@ glib::wrapper! {
 impl BrushEditor {
     pub fn new() -> Self {
         glib::Object::new()
+    }
+
+    fn sync_project(&self, tab: &BrushEditorContent) {
+        let project = tab.project_context();
+        let project_borrow = project.borrow();
+
+        let zoom = tab.zoom();
+        let rotation = tab.rotation();
+        
+        // Update the Sidebar, Title, or Layer List
+        self.imp().current_project.set(project_borrow.clone());
+        self.imp().current_zoom.set(zoom);
+        self.imp().current_rotation.set(rotation);
     }
 
     fn setup_accels(&self) {
@@ -325,12 +357,7 @@ impl BrushEditor {
     */
     fn new_document(&self) -> adw::TabPage {
         let tab_view = &self.imp().tab_view;
-        let editor_content = BrushEditorContent::new();
-
-        let _ = self
-            .bind_property("active_tool", &editor_content, "active_tool")
-            .sync_create()
-            .build();
+        let editor_content = BrushEditorContent::new(self.imp().editor_state.clone());
 
         let tab_page = tab_view.append(&editor_content);
         tab_page.set_live_thumbnail(true);
