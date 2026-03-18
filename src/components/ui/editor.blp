@@ -51,22 +51,6 @@ template $BrushEditor: Box {
             }
           }
 
-          [start]
-          Box {
-            orientation: horizontal;
-            spacing: 4;
-
-            $BrushColorChip primary_chip {}
-
-            $BrushColorChip secondary_chip {}
-
-            Button swap_colors {
-              icon-name: "double-ended-arrows-horizontal-symbolic";
-              action-name: "editor.swap-colors";
-              can-focus: false;
-            }
-          }
-
           [end]
           MenuButton {
             primary: true;
@@ -81,6 +65,22 @@ template $BrushEditor: Box {
             view: tab_view;
             action-name: "overview.open";
             can-focus: false;
+          }
+
+          [end]
+          Box {
+            orientation: horizontal;
+            spacing: 4;
+            $BrushColorChip primary_chip {}
+
+            $BrushColorChip secondary_chip {}
+
+            Button swap_colors {
+              icon-name: "double-ended-arrows-horizontal-symbolic";
+              action-name: "editor.swap-colors";
+              can-focus: false;
+            }
+
           }
         }
 
@@ -129,14 +129,26 @@ template $BrushEditor: Box {
               Box {
                 orientation: vertical;
                 hexpand: true;
+                margin-top: 4;
+                margin-bottom: 4;
+                margin-start: 4;
+                margin-end: 4;
 
-                Label {
-                  label: _("Right Bar");
+                Box {
+                  height-request: 200;
 
-                  styles [
-                    "title-2",
-                  ]
+                  Label {
+                    label: _("Color picker here");
+                    valign: center;
+                    hexpand: true;
+
+                    styles [
+                      "title-2",
+                    ]
+                  }
                 }
+
+                $BrushLayerTree layer_tree {}
               }
             };
 

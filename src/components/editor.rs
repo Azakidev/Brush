@@ -21,26 +21,33 @@
 use adw::{prelude::WidgetExt, subclass::prelude::*};
 use gtk::{
     gdk, gio,
-    glib::{self, object::ObjectExt, property::PropertySet, types::StaticType, variant::ToVariant},
+    glib::{
+        self, clone,
+        object::{Cast, ObjectExt},
+        property::PropertySet,
+        types::StaticType,
+        variant::ToVariant,
+    },
 };
 use std::{
     cell::{Cell, RefCell},
     rc::Rc,
 };
 
-use crate::components::{
-    color_chip::BrushColorChip,
-    editor_content::BrushEditorContent,
-    utils::{color::oklab_to_rgba, editor_state::BrushEditorState},
+use crate::{
+    components::{
+        color_chip::BrushColorChip,
+        editor_content::BrushEditorContent,
+        utils::{color::oklab_to_rgba, editor_state::BrushEditorState},
+    },
+    data::project::BrushProject,
 };
-use crate::data::file::BrushProject;
 
 mod imp {
-    use gtk::glib::{clone, object::Cast};
+    use crate::components::layer_tree::BrushLayerTree;
 
     use super::*;
 
-    #[allow(dead_code)]
     #[derive(Debug, Default, glib::Properties, gtk::CompositeTemplate)]
     #[template(resource = "/art/FatDawlf/Brush/editor.ui")]
     #[properties(wrapper_type = super::BrushEditor)]
@@ -68,6 +75,8 @@ mod imp {
         primary_chip: TemplateChild<BrushColorChip>,
         #[template_child]
         secondary_chip: TemplateChild<BrushColorChip>,
+        #[template_child]
+        pub layer_tree: TemplateChild<BrushLayerTree>,
 
         // State
         pub editor_state: Rc<RefCell<BrushEditorState>>,
@@ -193,20 +202,21 @@ mod imp {
                 let title = self.title.get();
 
                 self.tab_view.connect_selected_page_notify(clone!(
-                        #[weak(rename_to = obj)]
-                        self,
-                        move |view| {
-                    if let Some(page) = view.selected_page() {
-                        page.bind_property("title", &title, "title")
-                            .sync_create()
-                            .build();
+                    #[weak(rename_to = obj)]
+                    self,
+                    move |view| {
+                        if let Some(page) = view.selected_page() {
+                            page.bind_property("title", &title, "title")
+                                .sync_create()
+                                .build();
 
-                        let child = page.child();
-                        if let Ok(canvas_tab) = child.downcast::<BrushEditorContent>() {
-                            obj.obj().sync_project(&canvas_tab);
+                            let child = page.child();
+                            if let Ok(canvas_tab) = child.downcast::<BrushEditorContent>() {
+                                obj.obj().sync_project(&canvas_tab);
+                            }
                         }
                     }
-                }));
+                ));
 
                 self.tab_view.connect_page_detached(move |tab_view, _, _| {
                     let _ = tab_view.activate_action("win.should-close-editor", None);
@@ -276,7 +286,7 @@ impl BrushEditor {
 
         let zoom = tab.zoom();
         let rotation = tab.rotation();
-        
+
         // Update the Sidebar, Title, or Layer List
         self.imp().current_project.set(project_borrow.clone());
         self.imp().current_zoom.set(zoom);

@@ -1,0 +1,27 @@
+using Gtk 4.0;
+// using Adw 1;
+template $BrushLayerTree: Box {
+  vexpand: true;
+  orientation: vertical;
+  margin-top: 4;
+
+  Box tree {
+    orientation: vertical;
+    vexpand: true;
+
+    styles [
+      "frame",
+    ]
+  }
+
+  Box {
+    orientation: horizontal;
+    hexpand: true;
+    margin-top: 4;
+
+    Button add-layer {
+      icon-name: "plus-large-symbolic";
+      action-name: "canvas.new-pixel";
+    }
+  }
+}

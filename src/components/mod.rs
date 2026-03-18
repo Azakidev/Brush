@@ -26,5 +26,6 @@ pub mod editor;
 // Components
 pub mod editor_content;
 pub mod color_chip;
-
+pub mod layer_tree;
+// Other stuff
 pub mod utils;

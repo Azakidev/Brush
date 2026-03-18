@@ -25,15 +25,16 @@ use crate::data::layer::{Layer, LayerData};
 #[allow(dead_code)]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct GroupData {
-    pub layers: Vec<Layer>
+    pub layers: Vec<Layer>,
 }
 
 impl LayerData for GroupData {}
 
 impl GroupData {
     pub fn new() -> Self {
-        Self {
-            layers: Vec::new()
-        }
+        Self { layers: Vec::new() }
     }
- }
+    pub fn append(&mut self, index: usize, layer: Layer) {
+        self.layers.insert(index, layer);
+    }
+}

@@ -19,8 +19,8 @@
  */
 
 mod application;
-mod config;
 mod components;
+mod config;
 mod data;
 
 use self::application::BrushApplication;
@@ -28,8 +28,8 @@ use self::components::window::BrushWindow;
 
 use config::{GETTEXT_PACKAGE, LOCALEDIR, PKGDATADIR};
 use gettextrs::{bind_textdomain_codeset, bindtextdomain, textdomain};
-use gtk::{gio, glib};
 use gtk::prelude::*;
+use gtk::{gio, glib};
 
 fn main() -> glib::ExitCode {
     // Set up gettext translations
@@ -43,22 +43,7 @@ fn main() -> glib::ExitCode {
         .expect("Could not load resources");
     gio::resources_register(&resources);
 
-    // #[cfg(target_os = "linux")]
-    // {
-    //     unsafe {
-    //         // Flatpak/Mesa usually provides libepoxy.so.0
-    //         libloading::Library::new("libepoxy.so.0").expect("Failed to load libepoxy");
-    //     }
-    // }
-
-    // Create a new GtkApplication. The application manages our main loop,
-    // application windows, integration with the window manager/compositor, and
-    // desktop features such as file opening and single-instance applications.
     let app = BrushApplication::new("art.FatDawlf.Brush", &gio::ApplicationFlags::empty());
 
-    // Run the application. This function will block until the application
-    // exits. Upon return, we have our exit code to return to the shell. (This
-    // is the code you see when you do `echo $?` after running a command in a
-    // terminal.
     app.run()
 }

@@ -1,4 +1,4 @@
-/* ref.rs
+/* fill.rs
  *
  * Copyright 2026 FatDawlf
  *
@@ -20,20 +20,32 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::data::{layer::{BrushLayer, LayerParameter}, layers::pixel::PixelData};
+use crate::data::layer::{LayerData, LayerParameter};
 
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub enum FillLayerType {
+    Solid,
+    Gradient
+ }
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct FillLayerData {
+    pub fill_type: FillLayerType,
+    pub color: Option<u8>,
+    pub gradient: Option<Vec<(f32, u8)>> // Position, color
+ }
+
+impl LayerData for FillLayerData {}
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct RefLayer(BrushLayer<RefLayerParameters, PixelData>);
-
-#[allow(dead_code)]
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct RefLayerParameters {
-    opacity: u8,
-    visible: bool,
+pub struct FillLayerParameters {
+    pub opacity: f32,
+    pub visible: bool,
+    pub alpha_clip: bool,
+    pub alpha_lock: bool,
 }
 
-impl LayerParameter for RefLayerParameters {
+impl LayerParameter for FillLayerParameters {
     fn is_visible(&self) -> bool {
         self.visible
     }

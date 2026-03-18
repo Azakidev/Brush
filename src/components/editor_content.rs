@@ -19,7 +19,7 @@
  */
 
 use adw::{prelude::*, subclass::prelude::*};
-use glow::{Context, HasContext, NativeVertexArray, PixelUnpackData, Program};
+use glow::{Context, NativeVertexArray};
 use gtk::{
     gdk,
     glib::{self, clone},
@@ -36,13 +36,15 @@ use uuid::Uuid;
 use crate::{
     components::utils::{
         editor_state::BrushEditorState,
-        renderer::shader::{compile_shader, FRAG_SRC, VERT_SRC},
+        renderer::render::{render_pass, setup_gl},
         tools::BrushTool,
     },
-    data::{file::BrushProject, layer::Layer},
+    data::{project::BrushProject, layer::Layer},
 };
 
 mod imp {
+
+    use crate::components::utils::renderer::shader_manager::ShaderManager;
 
     use super::*;
 
@@ -60,9 +62,10 @@ mod imp {
         // Gl context
         pub gl_context: OnceCell<Context>,
         pub gl_lib: OnceCell<Library>,
-        pub gl_program: OnceCell<Program>,
+        pub gl_shader_manager: OnceCell<RefCell<ShaderManager>>,
         pub gl_vao: OnceCell<NativeVertexArray>,
         // Viewport
+        pub active_layer: Cell<Option<Uuid>>,
         pub zoom: Cell<f32>,
         pub position: Cell<(f32, f32)>, // Offset from screen center
         pub rotation: Cell<f32>,        // Radians
@@ -80,6 +83,11 @@ mod imp {
 
             klass.install_action("canvas.zoom-in", None, move |content, _, _| {
                 content.zoom_by(0.05f32);
+            });
+
+            klass.install_action("canvas.new_pixel", None, move |content, _, _| {
+                let layer = content.new_pixel_layer();
+                content.push_layer(layer);
             });
 
             klass.install_action("canvas.zoom-out", None, move |content, _, _| {
@@ -101,6 +109,10 @@ mod imp {
             klass.install_action("canvas.rotate-reset", None, move |content, _, _| {
                 content.rotate_to(0f32);
             });
+
+            klass.install_action("canvas.print-state", None, move |content, _, _| {
+                println!("Contents: {:?}", content.imp().context)
+            });
         }
 
         fn instance_init(obj: &glib::subclass::InitializingObject<Self>) {
@@ -121,27 +133,17 @@ mod imp {
             obj.setup_pinch_controller();
             obj.setup_rotate_controller();
 
-            // Layer setup test
-            {
-                obj.add_pixel_layer();
-                let layer = self
-                    .context
-                    .borrow()
-                    .layers
-                    .first()
-                    .unwrap()
-                    .id()
-                    .to_string();
-
-                obj.rename_layer(layer, "Waow".to_owned());
-            }
-
             // Setup default values
             {
                 self.zoom.set(1.0);
                 self.position.set((0.0, 0.0));
                 self.rotation.set(0.0);
+                self.active_layer.set(None);
             }
+
+            // Layer setup test
+            let layer = obj.new_pixel_layer();
+            obj.push_layer(layer);
 
             // Setup canvas
             {
@@ -227,231 +229,57 @@ impl BrushEditorContent {
     unsafe fn setup_program(&self) {
         let gl = self.imp().gl_context.get().unwrap();
 
-        let vs = compile_shader(gl, glow::VERTEX_SHADER, VERT_SRC);
-        let fs = compile_shader(gl, glow::FRAGMENT_SHADER, FRAG_SRC);
-        let program = gl.create_program().expect("Cannot create program");
-
-        gl.attach_shader(program, vs);
-        gl.attach_shader(program, fs);
-        gl.link_program(program);
-
-        if !gl.get_program_link_status(program) {
-            panic!("Link Error: {}", gl.get_program_info_log(program));
+        if let Some((shader_manager, vao)) = setup_gl(gl) {
+            let _ = self
+                .imp()
+                .gl_shader_manager
+                .set(RefCell::new(shader_manager));
+            let _ = self.imp().gl_vao.set(vao);
         }
-
-        // [x, y, u, v]
-        let vertices: [f32; 16] = [
-            0.0, 0.0, 0.0, 0.0, // Top Left
-            1.0, 0.0, 1.0, 0.0, // Top Right
-            0.0, 1.0, 0.0, 1.0, // Bottom Left
-            1.0, 1.0, 1.0, 1.0, // Bottom Right
-        ];
-
-        let vao = gl.create_vertex_array().expect("Cannot create VAO");
-        gl.bind_vertex_array(Some(vao));
-
-        let vbo = gl.create_buffer().expect("Cannot create VBO");
-        gl.bind_buffer(glow::ARRAY_BUFFER, Some(vbo));
-        gl.buffer_data_u8_slice(
-            glow::ARRAY_BUFFER,
-            bytemuck::cast_slice(&vertices),
-            glow::STATIC_DRAW,
-        );
-
-        // Position attribute
-        gl.enable_vertex_attrib_array(0);
-        gl.vertex_attrib_pointer_f32(0, 2, glow::FLOAT, false, 16, 0);
-
-        // Texture coordinates attribute
-        gl.enable_vertex_attrib_array(1);
-        gl.vertex_attrib_pointer_f32(1, 2, glow::FLOAT, false, 16, 8);
-
-        let _ = self.imp().gl_program.set(program);
-        let _ = self.imp().gl_vao.set(vao);
     }
 
     fn do_render(&self, area: &gtk::GLArea) -> glib::Propagation {
-        let imp = self.imp();
-        let context = self.imp().context.borrow();
-
-        // OpenGL Context
-        let Some(gl) = imp.gl_context.get() else {
-            return glib::Propagation::Proceed;
-        };
-        let Some(program) = imp.gl_program.get() else {
-            return glib::Propagation::Proceed;
-        };
-        let Some(vao) = imp.gl_vao.get() else {
-            return glib::Propagation::Proceed;
-        };
-
-        // Viewport parameters
-        let (win_w, win_h) = (area.width() as f32, area.height() as f32);
-        let (canvas_w, canvas_h) = (context.width as f32, context.height as f32);
-        let zoom = imp.zoom.get();
-        let (pos_x, pos_y) = imp.position.get();
-        let rotation = imp.rotation.get();
-
-        let Some(layer) = context.layers.first() else {
-            return glib::Propagation::Proceed;
-        };
-
-        let Some(pixel_data) = layer.pixel_data() else {
-            return glib::Propagation::Proceed;
-        };
-
-        let Some(tex_handle) =
-            self.prepare_texture(gl, layer.id(), context.width, context.height, &pixel_data)
-        else {
-            return glib::Propagation::Proceed;
-        };
-
-        unsafe {
-            use glow::HasContext;
-
-            gl.viewport(0, 0, win_w as i32, win_h as i32);
-            gl.clear_color(0.1, 0.1, 0.1, 1.0); // Dark background
-            gl.clear(glow::COLOR_BUFFER_BIT);
-
-            let projection = glam::Mat4::orthographic_lh(0.0, win_w, win_h, 0.0, -1.0, 1.0);
-
-            // Transformation Stack:
-            // a) Start at screen center + user offset
-            // b) Rotate the whole view
-            // c) Apply Zoom
-            // d) Move so the Quad's Top-Left is the local origin
-            // e) Scale to the actual pixel size of the canvas
-            let transform = glam::Mat4::from_translation(glam::vec3(
-                win_w / 2.0 + pos_x,
-                win_h / 2.0 + pos_y,
-                0.0,
-            )) * glam::Mat4::from_rotation_z(rotation)
-                * glam::Mat4::from_scale(glam::vec3(zoom, zoom, 1.0))
-                * glam::Mat4::from_translation(glam::vec3(-canvas_w / 2.0, -canvas_h / 2.0, 0.0))
-                * glam::Mat4::from_scale(glam::vec3(canvas_w, canvas_h, 1.0));
-
-            let mvp = projection * transform;
-
-            // 6. DRAWING
-            gl.use_program(Some(*program));
-
-            if !gl.get_program_link_status(*program) {
-                let log = gl.get_program_info_log(*program);
-                panic!("Shader Link Error: {}", log); // This will at least give you a log!
-            }
-
-            // Upload the matrix
-            if let Some(loc) = gl.get_uniform_location(*program, "u_mvp") {
-                gl.uniform_matrix_4_f32_slice(Some(&loc), false, &mvp.to_cols_array());
-            } else {
-                eprintln!("Warning: Uniform u_mvp not found!");
-            }
-
-            // Bind Texture
-            gl.active_texture(glow::TEXTURE0);
-            gl.bind_texture(glow::TEXTURE_2D, Some(tex_handle));
-            let u_tex = gl.get_uniform_location(*program, "u_texture");
-            gl.uniform_1_i32(u_tex.as_ref(), 0);
-
-            // Bind VAO and Draw the Quad
-            gl.bind_vertex_array(Some(*vao));
-            gl.disable(glow::CULL_FACE);
-            gl.draw_arrays(glow::TRIANGLE_STRIP, 0, 4);
-
-            // Clean up state
-            gl.bind_vertex_array(None);
-            gl.use_program(None);
-
-            gl.flush();
-        }
-
-        glib::Propagation::Proceed
+        render_pass(&self, area)
     }
 
-    pub fn prepare_texture(
-        &self,
-        gl: &glow::Context,
-        layer_id: uuid::Uuid,
-        width: u32,
-        height: u32,
-        pixels: &[u8],
-    ) -> Option<glow::Texture> {
-        let mut cache = self.imp().texture_cache.borrow_mut();
-
-        if let Some(&tex) = cache.get(&layer_id) {
-            return Some(tex);
-        }
-
-        let expected_size = (width * height * 4) as usize;
-        if pixels.len() != expected_size {
-            eprintln!(
-                "CRITICAL: Buffer size mismatch! Expected {}, got {}",
-                expected_size,
-                pixels.len()
-            );
-            return None;
-        }
-
-        unsafe {
-            use glow::HasContext;
-            gl.pixel_store_i32(glow::UNPACK_ALIGNMENT, 1);
-
-            let tex = gl.create_texture().expect("Failed to create texture");
-
-            gl.bind_texture(glow::TEXTURE_2D, Some(tex));
-
-            gl.tex_parameter_i32(
-                glow::TEXTURE_2D,
-                glow::TEXTURE_MIN_FILTER,
-                glow::LINEAR as i32,
-            );
-            gl.tex_parameter_i32(
-                glow::TEXTURE_2D,
-                glow::TEXTURE_MAG_FILTER,
-                glow::LINEAR as i32,
-            );
-
-            // CLAMP_TO_EDGE prevents a "seam" at the edges of the canvas
-            gl.tex_parameter_i32(
-                glow::TEXTURE_2D,
-                glow::TEXTURE_WRAP_S,
-                glow::CLAMP_TO_EDGE as i32,
-            );
-            gl.tex_parameter_i32(
-                glow::TEXTURE_2D,
-                glow::TEXTURE_WRAP_T,
-                glow::CLAMP_TO_EDGE as i32,
-            );
-
-            // Upload the raw pixel data
-            gl.tex_image_2d(
-                glow::TEXTURE_2D,
-                0,
-                glow::RGBA8 as i32, // Internal format
-                width as i32,
-                height as i32,
-                0,                   // Border (must be 0)
-                glow::RGBA,          // Format of source data
-                glow::UNSIGNED_BYTE, // Type of source data
-                PixelUnpackData::Slice(Some(pixels)),
-            );
-
-            // 3. Store in cache for the next frame
-            cache.insert(layer_id, tex);
-            Some(tex)
-        }
-    }
-
-    pub fn add_pixel_layer(&self) {
-        let mut context = self.imp().context.borrow_mut();
+    pub fn new_pixel_layer(&self) -> Layer {
+        let context = self.imp().context.borrow_mut();
 
         let name = "New pixel layer".to_owned();
         let width = context.width;
         let height = context.height;
 
-        let layer = Layer::new_pixel(name, width, height);
+        Layer::new_pixel(name, width, height)
+    }
 
-        context.layers.push(layer);
+    pub fn push_layer(&self, layer: Layer) {
+        let mut context = self.imp().context.borrow_mut();
+
+        if let Some(active_layer) = self.imp().active_layer.get() {
+            if let Some(active_layer) =
+                context.clone().find_layer_mut(&active_layer.to_string())
+            {
+                if let Some(parent) = context.find_parent(&active_layer) {
+                    if let Some(children) = parent.children() {
+                        let idx = children
+                            .iter()
+                            .position(|r| r.id() == active_layer.id())
+                            .unwrap_or(0);
+                        parent.append(idx, layer.clone());
+                    }
+                } else {
+                    let idx = context
+                        .layers
+                        .iter()
+                        .position(|r| r.id() == active_layer.id())
+                        .unwrap_or(0);
+                    context.layers.insert(idx, layer.clone());
+                }
+            }
+        } else {
+            context.layers.push(layer.clone());
+        }
+        self.imp().active_layer.set(Some(layer.id()));
     }
 
     pub fn rename_layer(&self, uuid: String, new_name: String) {

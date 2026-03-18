@@ -1,4 +1,4 @@
-/* mod.rs
+/* shader_manager.rs
  *
  * Copyright 2026 FatDawlf
  *
@@ -18,8 +18,23 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-pub mod fill;
-pub mod filter;
-pub mod group;
-pub mod pixel;
-pub mod refs;
+use crate::components::utils::renderer::shader::ShaderProgram;
+
+const VERT: &str = include_str!("./glsl/vert.glsl");
+const PIXEL_FRAG: &str = include_str!("./glsl/pixel.glsl");
+const BG_FRAG: &str = include_str!("./glsl/checkerboard.glsl");
+
+#[derive(Debug)]
+pub struct ShaderManager {
+    pub background: ShaderProgram,
+    pub layer: ShaderProgram,
+}
+
+impl ShaderManager {
+    pub unsafe fn new(gl: &glow::Context) -> Self {
+        Self {
+            background: ShaderProgram::new(gl, VERT, BG_FRAG),
+            layer: ShaderProgram::new(gl, VERT, PIXEL_FRAG),
+        }
+    }
+}

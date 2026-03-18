@@ -18,37 +18,56 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-pub const VERT_SRC: &str = r#"
-#version 320 es
-precision highp float;
-precision highp int;
+use glow::HasContext;
+use std::collections::HashMap;
 
-layout(location = 0) in vec2 position;
-layout(location = 1) in vec2 tex_coords;
-
-uniform mat4 u_mvp;
-out vec2 v_tex_coords;
-
-void main() {
-    v_tex_coords = tex_coords;
-    gl_Position = u_mvp * vec4(position, 0.0, 1.0);
+#[derive(Debug)]
+pub struct ShaderProgram {
+    program: glow::Program,
+    uniforms: HashMap<String, glow::UniformLocation>,
 }
-"#;
 
-pub const FRAG_SRC: &str = r#"
-#version 320 es
-precision highp float;
-precision highp int;
+impl ShaderProgram {
+    pub unsafe fn new(gl: &glow::Context, v_src: &str, f_src: &str) -> Self {
+        let program = gl.create_program().expect("Cannot create program");
 
-in vec2 v_tex_coords;
-out vec4 color;
+        let vs = compile_shader(gl, glow::VERTEX_SHADER, v_src);
+        let fs = compile_shader(gl, glow::FRAGMENT_SHADER, f_src);
 
-uniform sampler2D u_texture;
+        gl.attach_shader(program, vs);
+        gl.attach_shader(program, fs);
+        gl.link_program(program);
 
-void main() {
-    color = texture(u_texture, v_tex_coords);
+        // Check link status as we discussed before
+        if !gl.get_program_link_status(program) {
+            panic!("Link Error: {}", gl.get_program_info_log(program));
+        }
+
+        Self {
+            program,
+            uniforms: HashMap::new(),
+        }
+    }
+
+    pub unsafe fn get_uniform(
+        &mut self,
+        gl: &glow::Context,
+        name: &str,
+    ) -> Option<glow::UniformLocation> {
+        if let Some(loc) = self.uniforms.get(name) {
+            return Some(*loc);
+        }
+        let loc = gl.get_uniform_location(self.program, name);
+        if let Some(l) = loc {
+            self.uniforms.insert(name.to_string(), l);
+        }
+        loc
+    }
+
+    pub unsafe fn bind(&self, gl: &glow::Context) {
+        gl.use_program(Some(self.program));
+    }
 }
-"#;
 
 pub unsafe fn compile_shader(gl: &glow::Context, shader_type: u32, source: &str) -> glow::Shader {
     use glow::HasContext;

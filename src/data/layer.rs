@@ -24,9 +24,7 @@ use uuid::Uuid;
 use crate::data::{
     blend_modes::BlendMode,
     layers::{
-        filter::{Filter, FilterData},
-        group::GroupData,
-        pixel::PixelData,
+        fill::{FillLayerData, FillLayerParameters}, filter::{Filter, FilterData}, group::GroupData, pixel::PixelData
     },
 };
 
@@ -43,14 +41,17 @@ pub trait LayerData {}
 pub enum Layer {
     Group(BrushLayer<NodeLayerParameters, GroupData>),
     Pixel(BrushLayer<NodeLayerParameters, PixelData>),
+    Fill(BrushLayer<FillLayerParameters, FillLayerData>),
     Filter(BrushLayer<FilterLayerParameters, FilterData>),
 }
 
 impl Layer {
     pub fn new_pixel(name: String, width: u32, height: u32) -> Self {
+        let mut pixels: Vec<u8> = Vec::new();
+        pixels.resize((width * height * 4) as usize,  0u8);
+
         let params = NodeLayerParameters::default();
-        let mut data = PixelData::new(Vec::new(), "OkLab".to_owned(), width, height);
-        data.resize(width, height);
+        let data = PixelData::new(pixels, "OkLab".to_owned(), width, height);
 
         Layer::Pixel(BrushLayer::new(name, params, data))
     }
@@ -62,11 +63,53 @@ impl Layer {
         Layer::Group(BrushLayer::new(name, params, data))
     }
 
+    pub fn append(&mut self, index: usize, layer: Layer) {
+        match self {
+            Layer::Group(inner) => inner.data.append(index, layer),
+            _ => {}
+        }
+    }
+
     pub fn id(&self) -> Uuid {
         match self {
             Layer::Pixel(inner) => Uuid::parse_str(&inner.id).unwrap(),
             Layer::Group(inner) => Uuid::parse_str(&inner.id).unwrap(),
+            Layer::Fill(inner) => Uuid::parse_str(&inner.id).unwrap(),
             Layer::Filter(inner) => Uuid::parse_str(&inner.id).unwrap(),
+        }
+    }
+    
+    pub fn visible(&self) -> bool {
+        match self {
+            Layer::Pixel(inner) => inner.parameters.is_visible(),
+            Layer::Group(inner) => inner.parameters.is_visible(),
+            Layer::Fill(inner) => inner.parameters.is_visible(),
+            Layer::Filter(inner) => inner.parameters.is_visible(),
+        }
+    }
+    
+    pub fn opacity(&self) -> f32 {
+        match self {
+            Layer::Pixel(inner) => inner.parameters.opacity,
+            Layer::Group(inner) => inner.parameters.opacity,
+            Layer::Fill(inner) => inner.parameters.opacity,
+            _ => 1f32,
+        }
+    }
+
+    // TODO: Measure group layers too maybe
+    pub fn width(&self) -> u32 {
+        match self {
+            Layer::Pixel(inner) => inner.data.width,
+            _ => 0,
+        }
+    }
+    
+    // TODO: Measure group layers too maybe
+    pub fn height(&self) -> u32 {
+        match self {
+            Layer::Pixel(inner) => inner.data.height,
+            _ => 0,
         }
     }
 
@@ -95,6 +138,7 @@ impl Layer {
         match self {
             Layer::Pixel(inner) => &mut inner.name,
             Layer::Group(inner) => &mut inner.name,
+            Layer::Fill(inner) => &mut inner.name,
             Layer::Filter(inner) => &mut inner.name,
         }
     }
@@ -105,8 +149,8 @@ impl Layer {
                 inner.data.width = new_width;
                 inner.data.height = new_height;
                 inner.data.resize(new_width, new_height);
-            },
-            _ => {},
+            }
+            _ => {}
         }
     }
 }
@@ -150,7 +194,7 @@ where
 #[allow(dead_code)]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct NodeLayerParameters {
-    opacity: u8,
+    opacity: f32,
     blend_mode: BlendMode, // TODO: Replace with enum
     visible: bool,
     lock: bool,
@@ -161,7 +205,7 @@ pub struct NodeLayerParameters {
 impl Default for NodeLayerParameters {
     fn default() -> Self {
         Self {
-            opacity: 100,
+            opacity: 1f32,
             blend_mode: BlendMode::default(),
             visible: true,
             lock: false,
@@ -183,7 +227,7 @@ impl LayerParameter for NodeLayerParameters {
 #[allow(dead_code)]
 impl NodeLayerParameters {
     fn new(
-        opacity: u8,
+        opacity: f32,
         blend_mode: BlendMode,
         visible: bool,
         lock: bool,
@@ -191,7 +235,7 @@ impl NodeLayerParameters {
         alpha_lock: bool,
     ) -> Self {
         Self {
-            opacity: opacity.max(100),
+            opacity: opacity.max(1f32),
             blend_mode,
             visible,
             lock,
@@ -209,22 +253,6 @@ pub struct FilterLayerParameters {
 }
 
 impl LayerParameter for FilterLayerParameters {
-    fn is_visible(&self) -> bool {
-        self.visible
-    }
-    fn set_visible(&mut self, visible: bool) {
-        self.visible = visible;
-    }
-}
-
-#[allow(dead_code)]
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct RefLayerParameters {
-    opacity: u8,
-    visible: bool,
-}
-
-impl LayerParameter for RefLayerParameters {
     fn is_visible(&self) -> bool {
         self.visible
     }

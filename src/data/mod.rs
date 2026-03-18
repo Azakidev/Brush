@@ -18,7 +18,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-pub mod file;
+pub mod project;
 pub mod layer;
 pub mod layers;
 pub mod blend_modes;

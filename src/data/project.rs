@@ -84,6 +84,42 @@ impl BrushProject {
         Self::search_recursive(&self.layers, target_id)
     }
 
+    pub fn find_parent(&mut self, layer: &Layer) -> Option<&mut Layer> {
+        Self::find_parent_mut(&mut self.layers, layer.id())
+    }
+
+    pub fn find_layer_mut(&mut self, uuid: &str) -> Option<&mut Layer> {
+        let target_id = Uuid::parse_str(uuid).ok()?;
+        Self::search_recursive_mut(&mut self.layers, target_id)
+    }
+
+    pub fn rename_layer(&mut self, uuid: &str, new_name: String) {
+        if let Some(layer) = self.find_layer_mut(uuid) {
+            *layer.name_mut() = new_name;
+        }
+    }
+
+    fn find_parent_mut(layers: &mut [Layer], target_id: Uuid) -> Option<&mut Layer> {
+    for layer in layers {
+        // Layer contains target, return target
+        if let Some(children) = layer.children() {
+            if children.iter().any(|child| child.id() == target_id) {
+                return Some(layer);
+            }
+        }
+
+        // Layer doesn't contain target, but has children that must be checked
+        if let Some(children) = layer.children_mut() {
+            if let Some(found_parent) = Self::find_parent_mut(children, target_id) {
+                return Some(found_parent);
+            }
+        }
+    }
+
+    // Target is at the project's root
+    None
+}
+
     fn search_recursive(layers: &[Layer], target_id: Uuid) -> Option<&Layer> {
         for layer in layers {
             // Check if this layer is the one
@@ -98,16 +134,13 @@ impl BrushProject {
                 }
             }
         }
+        // Target doesn't exist
         None
-    }
-
-    pub fn find_layer_mut(&mut self, uuid: &str) -> Option<&mut Layer> {
-        let target_id = Uuid::parse_str(uuid).ok()?;
-        Self::search_recursive_mut(&mut self.layers, target_id)
     }
 
     fn search_recursive_mut(layers: &mut [Layer], target_id: Uuid) -> Option<&mut Layer> {
         for layer in layers {
+            // Check if this layer is the one
             if layer.id() == target_id {
                 return Some(layer);
             }
@@ -118,12 +151,7 @@ impl BrushProject {
                 }
             }
         }
+        // Target doesn't exist
         None
-    }
-
-    pub fn rename_layer(&mut self, uuid: &str, new_name: String) {
-        if let Some(layer) = self.find_layer_mut(uuid) {
-            *layer.name_mut() = new_name;
-        }
     }
 }
