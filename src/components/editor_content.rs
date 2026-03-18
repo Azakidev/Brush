@@ -366,16 +366,19 @@ impl BrushEditorContent {
             should_rotate,
             move |controller, _, _| {
                 let orig_rot = start_rotate.get();
+                let threshold = PI / 20f32;
 
                 let angle = controller.angle_delta() as f32;
 
-                if angle.abs() > PI / 20f32 {
+                if angle.abs() > threshold {
                     should_rotate.set(true)
                 } 
 
-                if obj.rotation().abs() < PI / 20f32 {
+                let final_angle = obj.rotation() + angle;
+
+                if (final_angle).abs() < threshold {
                     should_rotate.set(false);
-                    obj.rotate_to(0f32); // Snap to 0 if the angle is too small
+                    obj.rotate_to(0f32);
                 }
 
                 if should_rotate.get() {
