@@ -39,7 +39,7 @@ use crate::{
         renderer::render::{render_pass, setup_gl},
         tools::BrushTool,
     },
-    data::{project::BrushProject, layer::Layer},
+    data::{layer::Layer, project::BrushProject},
 };
 
 mod imp {
@@ -256,9 +256,7 @@ impl BrushEditorContent {
         let mut context = self.imp().context.borrow_mut();
 
         if let Some(active_layer) = self.imp().active_layer.get() {
-            if let Some(active_layer) =
-                context.clone().find_layer_mut(&active_layer.to_string())
-            {
+            if let Some(active_layer) = context.clone().find_layer_mut(&active_layer.to_string()) {
                 if let Some(parent) = context.find_parent(&active_layer) {
                     if let Some(children) = parent.children() {
                         let idx = children
@@ -373,13 +371,18 @@ impl BrushEditorContent {
 
                 if angle.abs() > PI / 20f32 {
                     should_rotate.set(true)
+                } 
+
+                if obj.rotation().abs() < PI / 20f32 {
+                    should_rotate.set(false);
+                    obj.rotate_to(0f32); // Snap to 0 if the angle is too small
                 }
 
                 if should_rotate.get() {
                     obj.rotate_to(orig_rot + angle);
-
-                    obj.imp().canvas.queue_draw();
                 }
+
+                obj.imp().canvas.queue_draw();
             }
         ));
 
