@@ -93,6 +93,19 @@ impl BrushProject {
         }
     }
 
+    pub fn remove_layer(&mut self, uuid: Uuid) -> Option<()> {
+        let layer = self.find_layer(uuid)?.clone();
+        if let Some(parent) = self.find_parent_mut(uuid) {
+            parent.remove_child(&layer);
+        } else {
+            if let Some(idx) = self.layers.iter().position(|l| l.id() == uuid) {
+                self.layers.remove(idx);
+            }
+        }
+
+        Some(())
+    }
+
     pub fn find_parent(&self, target_id: Uuid) -> Option<&Layer> {
         Self::search_parent_recursive(&self.layers, target_id)
     }

@@ -19,8 +19,12 @@ template $BrushLayerItem: Box {
       margin-top: 4;
       margin-bottom: 4;
 
-      Button revealer_toggle {
-        action-name: "layer.toggle-revealer";
+      ToggleButton revealer_toggle {
+        active: true;
+
+        styles [
+          "flat",
+        ]
 
         Image icon {
           pixel-size: 24;
@@ -73,13 +77,25 @@ template $BrushLayerItem: Box {
           "linked",
         ]
 
-        ToggleButton visible_toggle {}
+        ToggleButton visible_toggle {
+          icon-name: "eye-outline-filled-symbolic";
+          action-name: "editor.toggle_visible";
+        }
 
-        ToggleButton alpha_clip_toggle {}
+        ToggleButton alpha_clip_toggle {
+          icon-name: "eye-outline-filled-symbolic";
+          action-name: "editor.toggle_alpha_clip";
+        }
 
-        ToggleButton alpha_lock_toggle {}
+        ToggleButton alpha_lock_toggle {
+          icon-name: "eye-outline-filled-symbolic";
+          action-name: "editor.toggle_alpha_lock";
+        }
 
-        ToggleButton lock_toggle {}
+        ToggleButton lock_toggle {
+          icon-name: "padlock2-symbolic";
+          action-name: "editor.toggle_lock";
+        }
       }
     }
   }
@@ -88,9 +104,13 @@ template $BrushLayerItem: Box {
     reveal-child: true;
     transition-type: slide_down;
     transition-duration: 150;
-    margin-start: 4;
+    margin-start: 2;
 
     Box {
+      styles [
+        "layer_children",
+      ]
+
       Box filters {
         orientation: vertical;
       }

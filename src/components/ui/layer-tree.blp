@@ -7,7 +7,11 @@ template $BrushLayerTree: Box {
 
   ScrolledWindow {
     has-frame: true;
-    hscrollbar-policy: never;
+    hscrollbar-policy: automatic;
+
+    styles [
+      "tree_container",
+    ]
 
     Box tree {
       orientation: vertical;
@@ -22,19 +26,86 @@ template $BrushLayerTree: Box {
     orientation: horizontal;
     hexpand: true;
     margin-top: 4;
+    spacing: 4;
 
-    styles [
-      "linked",
-    ]
+    Box {
+      orientation: horizontal;
 
-    Button add-layer {
-      icon-name: "plus-large-symbolic";
-      action-name: "editor.new-pixel";
+      styles [
+        "linked",
+      ]
+
+      Button add_layer {
+        icon-name: "plus-large-symbolic";
+        action-name: "editor.new-pixel";
+        can-focus: false;
+      }
+
+      Button add_group {
+        icon-name: "folder-visiting-symbolic";
+        action-name: "editor.new-group";
+        can-focus: false;
+      }
+
+      MenuButton add_other {
+        direction: up;
+        menu-model: other_layer;
+        can-focus: false;
+      }
     }
 
-    Button add-group {
-      icon-name: "folder-visiting-symbolic";
-      action-name: "editor.new-group";
+    Box {
+      orientation: horizontal;
+
+      styles [
+        "linked",
+      ]
+
+      Button move_layer_up {
+        icon-name: "up-large-symbolic";
+        action-name: "editor.move-layer-up";
+        can-focus: false;
+      }
+
+      Button move_layer_down {
+        icon-name: "down-large-symbolic";
+        action-name: "editor.move-layer-down";
+        can-focus: false;
+      }
+    }
+
+    Separator {
+      hexpand: true;
+
+      styles [
+        "spacer",
+      ]
+    }
+
+    Button layer_properties {
+      icon-name: "sliders-horizontal-symbolic";
+      action-name: "editor.layer_properties";
+      can-focus: false;
+    }
+
+    Button delete_layer {
+      icon-name: "user-trash-symbolic";
+      action-name: "editor.delete-layer";
+      can-focus: false;
+    }
+  }
+}
+
+menu other_layer {
+  section {
+    item {
+      label: _("New fill layer");
+      action: "editor.new-fill";
+    }
+
+    item {
+      label: _("New filter layer");
+      action: "editor.new-filter";
     }
   }
 }

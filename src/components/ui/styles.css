@@ -3,18 +3,27 @@ colorChip {
 
     min-width: var(--size);
     min-height: var(--size);
-    
+
     border-radius: 4px;
     border: 1px solid var(--border-color);
+}
+
+.bar {
+    border: none;
+    padding-top: 8px;
 }
 
 .layer_selected {
     background-color: hsl(from var(--accent-bg-color) h calc(s * 0.8) l / 0.5);
 }
 
-.bar {
-    border: none;
-    padding-top: 8px;
+.layer_children {
+    padding-left: 4px;
+    border-left: 1px solid var(--border-color);
+}
+
+.tree_container {
+    border-radius: 16px;
 }
 
 .layer_label {

@@ -22,26 +22,30 @@ use adw::{prelude::*, subclass::prelude::*};
 use glow::{Context, NativeVertexArray};
 use gtk::{
     gdk,
-    glib::{self, clone, WeakRef},
+    glib::{self, clone, VariantTy, WeakRef},
 };
 use libloading::Library;
+
 use std::{
     cell::{Cell, OnceCell, RefCell},
     collections::HashMap,
     f32::consts::PI,
+    ops::Sub,
     rc::Rc,
 };
 use uuid::Uuid;
 
-use crate::{components::layer_item::BrushLayerItem, data::project};
 use crate::{
-    components::utils::{
-        editor_state::BrushEditorState,
-        renderer::{
-            render::{render_pass, setup_gl},
-            shader_manager::ShaderManager,
+    components::{
+        layer_item::BrushLayerItem,
+        utils::{
+            editor_state::BrushEditorState,
+            renderer::{
+                render::{render_pass, setup_gl},
+                shader_manager::ShaderManager,
+            },
+            tools::BrushTool,
         },
-        tools::BrushTool,
     },
     data::{layer::Layer, project::BrushProject},
 };
@@ -58,6 +62,7 @@ mod imp {
         #[template_child]
         pub canvas: TemplateChild<gtk::GLArea>,
         // Project context
+        pub file_location: RefCell<Option<String>>,
         pub editor_state: OnceCell<Rc<RefCell<BrushEditorState>>>,
         pub project: RefCell<BrushProject>,
         pub texture_cache: RefCell<HashMap<Uuid, glow::Texture>>,
@@ -97,6 +102,24 @@ mod imp {
                 let layer = content.new_group_layer();
                 content.push_layer(layer);
             });
+
+            klass.install_action("canvas.remove-layer", None, move |content, _, _| {
+                content.remove_layer();
+            });
+
+            klass.install_action(
+                "canvas.rename-layer",
+                Some(VariantTy::STRING),
+                move |content, _, arg| {
+                    if let Some(var) = arg {
+                        let value = var.to_string(); // 'Name'
+                        let name = value.get(1..value.len().sub(1)).unwrap(); // Remove quotes
+                        if let Some(active_layer) = content.imp().active_layer.get() {
+                            content.rename_layer(active_layer, name.to_string());
+                        }
+                    }
+                },
+            );
 
             klass.install_action("canvas.zoom-out", None, move |content, _, _| {
                 content.zoom_by(-0.05f32);
@@ -221,6 +244,7 @@ impl BrushEditorContent {
         obj
     }
 
+    // Query
     pub fn project_context(&self) -> Rc<RefCell<BrushProject>> {
         Rc::new(self.imp().project.clone())
     }
@@ -241,6 +265,7 @@ impl BrushEditorContent {
         self.imp().rotation.get()
     }
 
+    // GL stuff
     unsafe fn setup_program(&self) {
         let gl = self.imp().gl_context.get().unwrap();
 
@@ -257,6 +282,7 @@ impl BrushEditorContent {
         render_pass(&self, area)
     }
 
+    // Layer management
     pub fn new_pixel_layer(&self) -> Layer {
         let context = self.imp().project.borrow_mut();
 
@@ -295,7 +321,7 @@ impl BrushEditorContent {
                             .position(|r| r.id() == active_layer.id())
                             .unwrap_or(0);
                         parent.append(idx, layer.clone());
-                    } 
+                    }
                 // If if doesn't have a parent, append it to the project in position
                 } else {
                     let idx = project
@@ -314,6 +340,67 @@ impl BrushEditorContent {
             "editor.activate-layer",
             Some(&layer.id().to_string().to_variant()),
         );
+    }
+
+    pub fn remove_layer(&self) {
+        let imp = self.imp();
+        let mut project = imp.project.borrow_mut();
+        let mut widget_cache = imp.layer_widgets.borrow_mut();
+        let mut texture_cache = imp.texture_cache.borrow_mut();
+
+        if let Some(active_layer) = imp.active_layer.get() {
+            // If the active layer's parent...
+            if let Some(parent) = project.find_parent(active_layer) {
+                // Is a group...
+                if let Some(children) = parent.children() {
+                    // That will still have children after removal
+                    if children.len() - 1 != 0 {
+                        // Select the next children
+                        let idx = children
+                            .iter()
+                            .position(|l| l.id() == active_layer)
+                            .unwrap_or(0);
+                        let idx = if children.len() == idx + 1 {
+                            idx - 1
+                        } else {
+                            idx + 1
+                        };
+                        if let Some(layer) = children.get(idx) {
+                            imp.active_layer.set(Some(layer.id()));
+                        }
+                    } else {
+                        // Otherwise, select the parent
+                        imp.active_layer.set(Some(parent.id()));
+                    }
+                }
+                // If it doesn't have a parent
+            } else {
+                // And the parent has other layers after removal
+                if project.layers.len() - 1 != 0 {
+                    // Select the next one
+                    let idx = project
+                        .layers
+                        .iter()
+                        .position(|l| l.id() == active_layer)
+                        .unwrap_or(0);
+                    let idx = if project.layers.len() == idx + 1 {
+                        idx - 1
+                    } else {
+                        idx + 1
+                    };
+                    if let Some(layer) = project.layers.get(idx) {
+                        imp.active_layer.set(Some(layer.id()));
+                    }
+                } else {
+                    // Otherwise, there's no layer left and the active layer should be None
+                    imp.active_layer.set(None);
+                }
+            }
+
+            project.remove_layer(active_layer);
+            texture_cache.remove(&active_layer);
+            widget_cache.remove(&active_layer);
+        }
     }
 
     pub fn rename_layer(&self, uuid: Uuid, new_name: String) {

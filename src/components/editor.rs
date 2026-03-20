@@ -184,6 +184,13 @@ mod imp {
                 },
             );
 
+            klass.install_action("editor.delete-layer", None, |editor, _, _| {
+                if let Some(tab) = editor.imp().tab_view.selected_page() {
+                    let _ = tab.child().activate_action("canvas.remove-layer", None);
+                    editor.sync_tab(tab);
+                }
+            });
+
             klass.install_property_action("editor.change-tool", "active_tool");
         }
 
@@ -460,6 +467,22 @@ impl BrushEditor {
                     widget.activate_action("editor.change-tool", Some(&"box_select".to_variant()));
                 glib::Propagation::Stop
             })),
+        ));
+
+        imp.shortcut_controller.add_shortcut(gtk::Shortcut::new(
+            Some(gtk::KeyvalTrigger::new(
+                gdk::Key::Insert,
+                gdk::ModifierType::NO_MODIFIER_MASK,
+            )),
+            Some(gtk::NamedAction::new("editor.new-pixel")),
+        ));
+
+        imp.shortcut_controller.add_shortcut(gtk::Shortcut::new(
+            Some(gtk::KeyvalTrigger::new(
+                gdk::Key::Insert,
+                gdk::ModifierType::SHIFT_MASK,
+            )),
+            Some(gtk::NamedAction::new("editor.new-group")),
         ));
     }
 

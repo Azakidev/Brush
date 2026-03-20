@@ -24,7 +24,7 @@ use uuid::Uuid;
 use crate::data::{
     blend_modes::BlendMode,
     layers::{
-        fill::{FillLayerData, FillLayerParameters}, filter::{Filter, FilterData}, group::GroupData, pixel::PixelData
+        fill::{FillLayerData, FillLayerParameters}, filter::{FilterData}, group::GroupData, pixel::PixelData
     },
 };
 
@@ -132,6 +132,41 @@ impl Layer {
         }
     }
 
+    pub fn remove_child(&mut self, child: &Layer) {
+        match child {
+            Layer::Filter(_) => {
+                match self {
+                    Layer::Pixel(inner) => {
+                        if let Some(idx) = inner.filters.iter().position(|l| l.id() == child.id()) {
+                            inner.filters.remove(idx);
+                        }
+                    }
+                    Layer::Group(inner) => {
+                        if let Some(idx) = inner.filters.iter().position(|l| l.id() == child.id()) {
+                            inner.filters.remove(idx);
+                        }
+                    }
+                    Layer::Fill(inner) => {
+                        if let Some(idx) = inner.filters.iter().position(|l| l.id() == child.id()) {
+                            inner.filters.remove(idx);
+                        }
+                    }
+                    _ => unreachable!() // Filters can't have filters
+                }
+            }
+            _ => {
+                match self {
+                    Layer::Group(inner) => {
+                        if let Some(idx) = inner.data.layers.iter().position(|l| l.id() == child.id()) {
+                            inner.data.layers.remove(idx);
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+
     pub fn blend_mode(&self) -> &BlendMode {
         match self {
             Layer::Pixel(inner) => &inner.parameters.blend_mode,
@@ -181,7 +216,7 @@ where
     id: String,
     name: String,
 
-    filters: Vec<Filter>,
+    filters: Vec<Layer>,
     parameters: T,
     data: D,
 }

@@ -58,7 +58,7 @@ mod imp {
 
         //Buttons
         #[template_child]
-        pub revealer_toggle: TemplateChild<gtk::Button>,
+        pub revealer_toggle: TemplateChild<gtk::ToggleButton>,
         #[template_child]
         pub visible_toggle: TemplateChild<gtk::ToggleButton>,
         #[template_child]
@@ -82,7 +82,8 @@ mod imp {
             klass.bind_template();
 
             klass.install_action("layer.toggle-revealer", None, |item, _, _| {
-                let revealer = &item.imp().children_revealer;
+                let imp = item.imp();
+                let revealer = &imp.children_revealer;
                 revealer.set_reveal_child(!revealer.reveals_child());
             });
         }
@@ -99,6 +100,7 @@ mod imp {
             let obj = self.obj();
 
             obj.setup_click();
+            obj.bind_revealer();
         }
     }
     impl WidgetImpl for BrushLayerItem {}
@@ -147,6 +149,18 @@ impl BrushLayerItem {
         obj
     }
 
+    fn bind_revealer(&self) {
+        let imp = self.imp();
+        let toggle = &imp.revealer_toggle;
+        let revealer = &imp.children_revealer.get();
+
+        toggle
+            .bind_property("active", revealer, "reveal-child")
+            .sync_create()
+            .bidirectional()
+            .build();
+    }
+
     fn setup_visibility(&self, layer: &Layer) {
         let imp = self.imp();
 
@@ -157,7 +171,7 @@ impl BrushLayerItem {
                 imp.icon.set_icon_name(Some("folder-documents-symbolic"));
             }
             Layer::Group(_inner) => {
-                imp.icon.set_icon_name(Some("folder-visiting-symbolic"));
+                imp.icon.set_icon_name(Some("folder-open-symbolic"));
                 imp.alpha_lock_toggle.set_visible(false);
             }
             Layer::Fill(_inner) => {
@@ -199,12 +213,13 @@ impl BrushLayerItem {
     fn toggle_selected(&self, selected_layer: &Uuid) {
         let imp = self.imp();
         let container = imp.container.get();
-        let id = imp.layer.get().unwrap();
 
-        if id == selected_layer {
-            container.add_css_class("layer_selected");
-        } else {
-            container.remove_css_class("layer_selected");
+        if let Some(id) = imp.layer.get() {
+            if id == selected_layer {
+                container.add_css_class("layer_selected");
+            } else {
+                container.remove_css_class("layer_selected");
+            }
         }
     }
 
