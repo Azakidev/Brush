@@ -22,7 +22,7 @@ use adw::{prelude::*, subclass::prelude::*};
 use glow::{Context, NativeVertexArray};
 use gtk::{
     gdk,
-    glib::{self, clone},
+    glib::{self, clone, WeakRef},
 };
 use libloading::Library;
 use std::{
@@ -33,18 +33,20 @@ use std::{
 };
 use uuid::Uuid;
 
+use crate::{components::layer_item::BrushLayerItem, data::project};
 use crate::{
     components::utils::{
         editor_state::BrushEditorState,
-        renderer::render::{render_pass, setup_gl},
+        renderer::{
+            render::{render_pass, setup_gl},
+            shader_manager::ShaderManager,
+        },
         tools::BrushTool,
     },
     data::{layer::Layer, project::BrushProject},
 };
 
 mod imp {
-
-    use crate::components::utils::renderer::shader_manager::ShaderManager;
 
     use super::*;
 
@@ -57,8 +59,9 @@ mod imp {
         pub canvas: TemplateChild<gtk::GLArea>,
         // Project context
         pub editor_state: OnceCell<Rc<RefCell<BrushEditorState>>>,
-        pub context: RefCell<BrushProject>,
+        pub project: RefCell<BrushProject>,
         pub texture_cache: RefCell<HashMap<Uuid, glow::Texture>>,
+        pub layer_widgets: RefCell<HashMap<Uuid, WeakRef<BrushLayerItem>>>,
         // Gl context
         pub gl_context: OnceCell<Context>,
         pub gl_lib: OnceCell<Library>,
@@ -85,8 +88,13 @@ mod imp {
                 content.zoom_by(0.05f32);
             });
 
-            klass.install_action("canvas.new_pixel", None, move |content, _, _| {
+            klass.install_action("canvas.new-pixel", None, move |content, _, _| {
                 let layer = content.new_pixel_layer();
+                content.push_layer(layer);
+            });
+
+            klass.install_action("canvas.new-group", None, move |content, _, _| {
+                let layer = content.new_group_layer();
                 content.push_layer(layer);
             });
 
@@ -111,7 +119,10 @@ mod imp {
             });
 
             klass.install_action("canvas.print-state", None, move |content, _, _| {
-                println!("Contents: {:?}", content.imp().context)
+                println!(
+                    "Contents: {}",
+                    serde_json::to_string(&content.imp().project).unwrap()
+                )
             });
         }
 
@@ -130,7 +141,7 @@ mod imp {
             obj.setup_motion_controller();
             obj.setup_scroll_controller();
             obj.setup_drag_controller();
-            obj.setup_pinch_controller();
+            obj.setup_zoom_controller();
             obj.setup_rotate_controller();
 
             // Setup default values
@@ -140,10 +151,6 @@ mod imp {
                 self.rotation.set(0.0);
                 self.active_layer.set(None);
             }
-
-            // Layer setup test
-            let layer = obj.new_pixel_layer();
-            obj.push_layer(layer);
 
             // Setup canvas
             {
@@ -215,7 +222,15 @@ impl BrushEditorContent {
     }
 
     pub fn project_context(&self) -> Rc<RefCell<BrushProject>> {
-        Rc::new(self.imp().context.clone())
+        Rc::new(self.imp().project.clone())
+    }
+
+    pub fn widget_cache(&self) -> Rc<RefCell<HashMap<Uuid, WeakRef<BrushLayerItem>>>> {
+        Rc::new(self.imp().layer_widgets.clone())
+    }
+
+    pub fn selected_layer(&self) -> Option<Uuid> {
+        self.imp().active_layer.get()
     }
 
     pub fn zoom(&self) -> f32 {
@@ -243,7 +258,7 @@ impl BrushEditorContent {
     }
 
     pub fn new_pixel_layer(&self) -> Layer {
-        let context = self.imp().context.borrow_mut();
+        let context = self.imp().project.borrow_mut();
 
         let name = "New pixel layer".to_owned();
         let width = context.width;
@@ -252,37 +267,58 @@ impl BrushEditorContent {
         Layer::new_pixel(name, width, height)
     }
 
-    pub fn push_layer(&self, layer: Layer) {
-        let mut context = self.imp().context.borrow_mut();
+    pub fn new_group_layer(&self) -> Layer {
+        let name = "New Group".to_owned();
+        Layer::new_group(name)
+    }
 
-        if let Some(active_layer) = self.imp().active_layer.get() {
-            if let Some(active_layer) = context.clone().find_layer_mut(&active_layer.to_string()) {
-                if let Some(parent) = context.find_parent(&active_layer) {
+    pub fn push_layer(&self, layer: Layer) {
+        let mut project = self.imp().project.borrow_mut();
+
+        if let Some(active_id) = self.imp().active_layer.get() {
+            if let Some(active_layer) = project.clone().find_layer_mut(active_id) {
+                // If the active layer has children, append it to the layer
+                if let Some(children) = active_layer.children() {
+                    let idx = children
+                        .iter()
+                        .position(|r| r.id() == active_layer.id())
+                        .unwrap_or(0);
+
+                    if let Some(a_layer) = project.find_layer_mut(active_layer.id()) {
+                        a_layer.append(idx, layer.clone());
+                    }
+                // If the parent of the active layer has children, append it to the parent
+                } else if let Some(parent) = project.find_parent_mut(active_id) {
                     if let Some(children) = parent.children() {
                         let idx = children
                             .iter()
                             .position(|r| r.id() == active_layer.id())
                             .unwrap_or(0);
                         parent.append(idx, layer.clone());
-                    }
+                    } 
+                // If if doesn't have a parent, append it to the project in position
                 } else {
-                    let idx = context
+                    let idx = project
                         .layers
                         .iter()
                         .position(|r| r.id() == active_layer.id())
                         .unwrap_or(0);
-                    context.layers.insert(idx, layer.clone());
+                    project.layers.insert(idx, layer.clone());
                 }
             }
+        //If there's no active layer, push it to the beginning
         } else {
-            context.layers.push(layer.clone());
+            project.layers.push(layer.clone());
         }
-        self.imp().active_layer.set(Some(layer.id()));
+        let _ = self.activate_action(
+            "editor.activate-layer",
+            Some(&layer.id().to_string().to_variant()),
+        );
     }
 
-    pub fn rename_layer(&self, uuid: String, new_name: String) {
-        let mut context = self.imp().context.borrow_mut();
-        context.rename_layer(&uuid, new_name);
+    pub fn rename_layer(&self, uuid: Uuid, new_name: String) {
+        let mut project = self.imp().project.borrow_mut();
+        project.rename_layer(uuid, new_name);
     }
 
     // Viewport control
@@ -322,8 +358,8 @@ impl BrushEditorContent {
     pub fn zoom_to_fit(&self) {
         let imp = self.imp();
         let (canvas_width, canvas_height) = (
-            imp.context.borrow().width as f32,
-            imp.context.borrow().height as f32,
+            imp.project.borrow().width as f32,
+            imp.project.borrow().height as f32,
         );
         let (viewport_width, viewport_height) = (self.width() as f32, self.height() as f32);
 
@@ -372,7 +408,7 @@ impl BrushEditorContent {
 
                 if angle.abs() > threshold {
                     should_rotate.set(true)
-                } 
+                }
 
                 let final_angle = obj.rotation() + angle;
 
@@ -392,7 +428,7 @@ impl BrushEditorContent {
         self.add_controller(controller);
     }
 
-    pub fn setup_pinch_controller(&self) {
+    pub fn setup_zoom_controller(&self) {
         let controller = gtk::GestureZoom::new();
 
         let start_zoom = Rc::new(Cell::new(0f32));
@@ -601,7 +637,7 @@ impl BrushEditorContent {
     pub fn screen_to_canvas(&self, screen_x: f32, screen_y: f32) -> (f32, f32) {
         let imp = self.imp();
         let (win_w, win_h) = (self.width() as f32, self.height() as f32);
-        let project = imp.context.borrow();
+        let project = imp.project.borrow();
 
         let zoom = imp.zoom.get();
         let (pos_x, pos_y) = imp.position.get();

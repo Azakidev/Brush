@@ -34,7 +34,4 @@ impl GroupData {
     pub fn new() -> Self {
         Self { layers: Vec::new() }
     }
-    pub fn append(&mut self, index: usize, layer: Layer) {
-        self.layers.insert(index, layer);
-    }
 }

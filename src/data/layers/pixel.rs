@@ -22,9 +22,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::data::layer::LayerData;
 
-#[allow(dead_code)]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PixelData {
+    #[serde(skip_serializing)]
     pub pixels: Vec<u8>,
     pub color_space: String, // TODO: Replace with enum
 
@@ -52,6 +52,6 @@ impl PixelData {
 
     pub fn resize(&mut self, width: u32, height: u32) {
         let len = (width * height * 4) as usize;
-        self.pixels.resize(len, 255u8);
+        self.pixels.resize(len, 0u8);
     }
 }

@@ -20,8 +20,16 @@
 
 use serde::{Deserialize, Serialize};
 
-#[derive(Serialize, Deserialize, Debug, Default, Clone)]
+#[derive(Serialize, Deserialize, Debug, Default, Clone, PartialEq)]
 pub enum BlendMode {
     #[default]
     Normal,
 }
+
+impl BlendMode {
+    pub fn name(&self) -> &str {
+        match self {
+           Self::Normal => "Normal"
+        }
+    }
+ }

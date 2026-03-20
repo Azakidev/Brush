@@ -20,20 +20,23 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::data::layer::{LayerData, LayerParameter};
+use crate::data::{
+    blend_modes::BlendMode,
+    layer::{LayerData, LayerParameter},
+};
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub enum FillLayerType {
     Solid,
-    Gradient
- }
+    Gradient,
+}
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct FillLayerData {
     pub fill_type: FillLayerType,
     pub color: Option<u8>,
-    pub gradient: Option<Vec<(f32, u8)>> // Position, color
- }
+    pub gradient: Option<Vec<(f32, u8)>>, // Position, color
+}
 
 impl LayerData for FillLayerData {}
 
@@ -43,6 +46,7 @@ pub struct FillLayerParameters {
     pub visible: bool,
     pub alpha_clip: bool,
     pub alpha_lock: bool,
+    pub blend_mode: BlendMode,
 }
 
 impl LayerParameter for FillLayerParameters {

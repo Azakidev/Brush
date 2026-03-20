@@ -71,6 +71,7 @@ template $BrushEditor: Box {
           Box {
             orientation: horizontal;
             spacing: 4;
+
             $BrushColorChip primary_chip {}
 
             $BrushColorChip secondary_chip {}
@@ -80,7 +81,6 @@ template $BrushEditor: Box {
               action-name: "editor.swap-colors";
               can-focus: false;
             }
-
           }
         }
 
@@ -95,6 +95,7 @@ template $BrushEditor: Box {
 
           sidebar: Adw.NavigationPage {
             title: _("Left bar");
+              width-request: 300;
 
             styles [
               "background",
@@ -120,6 +121,7 @@ template $BrushEditor: Box {
 
             sidebar: Adw.NavigationPage {
               title: _("Right bar");
+              width-request: 300;
 
               styles [
                 "background",

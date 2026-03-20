@@ -8,7 +8,19 @@ colorChip {
     border: 1px solid var(--border-color);
 }
 
+.layer_selected {
+    background-color: hsl(from var(--accent-bg-color) h calc(s * 0.8) l / 0.5);
+}
+
 .bar {
     border: none;
     padding-top: 8px;
+}
+
+.layer_label {
+    font-size: 13px;
+}
+
+.subtext {
+    font-size: 11px;
 }

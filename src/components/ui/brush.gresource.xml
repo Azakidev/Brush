@@ -1,17 +1,14 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <gresources>
-  <gresource prefix="/art/FatDawlf/Brush">
-      <file preprocess="xml-stripblanks">shortcuts-dialog.ui</file>
-    <file preprocess="xml-stripblanks">window.ui</file>
-    <file preprocess="xml-stripblanks">welcome.ui</file>
-    <file preprocess="xml-stripblanks">editor.ui</file>
-    <file preprocess="xml-stripblanks">editor-content.ui</file>
-    <file preprocess="xml-stripblanks">layer-tree.ui</file>
-    <file compressed="true">styles.css</file>
-
-    <file preprocess="xml-stripblanks">../../../data/icons/hicolor/scalable/actions/paintbrush-symbolic.svg</file>
-    <file preprocess="xml-stripblanks">../../../data/icons/hicolor/scalable/actions/box-dotted-symbolic.svg</file>
-    <file preprocess="xml-stripblanks">../../../data/icons/hicolor/scalable/actions/pointer-secondary-click-symbolic.svg</file>
-  </gresource>
+    <gresource prefix="/art/FatDawlf/Brush">
+        <file preprocess="xml-stripblanks">shortcuts-dialog.ui</file>
+        <file preprocess="xml-stripblanks">window.ui</file>
+        <file preprocess="xml-stripblanks">welcome.ui</file>
+        <file preprocess="xml-stripblanks">editor.ui</file>
+        <file preprocess="xml-stripblanks">editor-content.ui</file>
+        <file preprocess="xml-stripblanks">layer-tree.ui</file>
+        <file preprocess="xml-stripblanks">layer-item.ui</file>
+        <file compressed="true">styles.css</file>
+    </gresource>
 </gresources>
 

@@ -15,6 +15,7 @@ install_data(
 actions_dir = 'hicolor' / 'scalable' / 'actions'
 install_data(
   actions_dir / 'move-tool-symbolic.svg',
+  actions_dir / 'fill-tool-symbolic.svg',
   actions_dir / 'paintbrush-symbolic.svg',
   actions_dir / 'box-dotted-symbolic.svg',
   actions_dir / 'magic-wand-symbolic.svg',

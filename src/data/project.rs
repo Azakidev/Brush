@@ -27,6 +27,7 @@ use crate::data::{layer::Layer, layers::refs::RefLayer};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct BrushProject {
+    // Data
     pub version: u32,
     pub created: u64, // UNIX timestamp
 
@@ -78,47 +79,65 @@ impl BrushProject {
         }
     }
 
-    pub fn find_layer(&self, uuid: &str) -> Option<&Layer> {
-        let target_id = Uuid::parse_str(uuid).ok()?;
-
-        Self::search_recursive(&self.layers, target_id)
+    pub fn find_layer(&self, uuid: Uuid) -> Option<&Layer> {
+        Self::search_recursive(&self.layers, uuid)
     }
 
-    pub fn find_parent(&mut self, layer: &Layer) -> Option<&mut Layer> {
-        Self::find_parent_mut(&mut self.layers, layer.id())
+    pub fn find_layer_mut(&mut self, uuid: Uuid) -> Option<&mut Layer> {
+        Self::search_recursive_mut(&mut self.layers, uuid)
     }
 
-    pub fn find_layer_mut(&mut self, uuid: &str) -> Option<&mut Layer> {
-        let target_id = Uuid::parse_str(uuid).ok()?;
-        Self::search_recursive_mut(&mut self.layers, target_id)
-    }
-
-    pub fn rename_layer(&mut self, uuid: &str, new_name: String) {
+    pub fn rename_layer(&mut self, uuid: Uuid, new_name: String) {
         if let Some(layer) = self.find_layer_mut(uuid) {
             *layer.name_mut() = new_name;
         }
     }
 
-    fn find_parent_mut(layers: &mut [Layer], target_id: Uuid) -> Option<&mut Layer> {
-    for layer in layers {
-        // Layer contains target, return target
-        if let Some(children) = layer.children() {
-            if children.iter().any(|child| child.id() == target_id) {
-                return Some(layer);
-            }
-        }
-
-        // Layer doesn't contain target, but has children that must be checked
-        if let Some(children) = layer.children_mut() {
-            if let Some(found_parent) = Self::find_parent_mut(children, target_id) {
-                return Some(found_parent);
-            }
-        }
+    pub fn find_parent(&self, target_id: Uuid) -> Option<&Layer> {
+        Self::search_parent_recursive(&self.layers, target_id)
     }
 
-    // Target is at the project's root
-    None
-}
+    pub fn find_parent_mut(&mut self, target_id: Uuid) -> Option<&mut Layer> {
+        Self::search_parent_recursive_mut(&mut self.layers, target_id)
+    }
+
+    fn search_parent_recursive(layers: &[Layer], target_id: Uuid) -> Option<&Layer> {
+        for layer in layers {
+            // Layer contains target, return target
+            if let Some(children) = layer.children() {
+                if children.iter().any(|child| child.id() == target_id) {
+                    return Some(layer);
+                // Layer doesn't contain target, but has children that must be checked
+                } else if let Some(found_parent) =
+                    Self::search_parent_recursive(children, target_id)
+                {
+                    return Some(found_parent);
+                }
+            }
+        }
+        // Target is at the project's root
+        None
+    }
+
+    fn search_parent_recursive_mut(layers: &mut [Layer], target_id: Uuid) -> Option<&mut Layer> {
+        for layer in layers {
+            // Layer contains target, return target
+            if let Some(children) = layer.children() {
+                if children.iter().any(|child| child.id() == target_id) {
+                    return Some(layer);
+                }
+            }
+
+            // Layer doesn't contain target, but has children that must be checked
+            if let Some(children) = layer.children_mut() {
+                if let Some(found_parent) = Self::search_parent_recursive_mut(children, target_id) {
+                    return Some(found_parent);
+                }
+            }
+        }
+        // Target is at the project's root
+        None
+    }
 
     fn search_recursive(layers: &[Layer], target_id: Uuid) -> Option<&Layer> {
         for layer in layers {

@@ -28,14 +28,12 @@ use crate::data::{
     },
 };
 
-#[allow(dead_code)]
 pub trait LayerParameter {
     fn is_visible(&self) -> bool;
     fn set_visible(&mut self, visible: bool);
 }
 pub trait LayerData {}
 
-#[allow(dead_code)]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(tag = "type")]
 pub enum Layer {
@@ -65,7 +63,7 @@ impl Layer {
 
     pub fn append(&mut self, index: usize, layer: Layer) {
         match self {
-            Layer::Group(inner) => inner.data.append(index, layer),
+            Layer::Group(inner) => inner.data.layers.insert(index, layer),
             _ => {}
         }
     }
@@ -134,6 +132,24 @@ impl Layer {
         }
     }
 
+    pub fn blend_mode(&self) -> &BlendMode {
+        match self {
+            Layer::Pixel(inner) => &inner.parameters.blend_mode,
+            Layer::Group(inner) => &inner.parameters.blend_mode,
+            Layer::Fill(inner) => &inner.parameters.blend_mode,
+            _ => {&BlendMode::Normal}
+        }
+    }
+    
+    pub fn name(&self) -> &str {
+        match self {
+            Layer::Pixel(inner) => &inner.name,
+            Layer::Group(inner) => &inner.name,
+            Layer::Fill(inner) => &inner.name,
+            Layer::Filter(inner) => &inner.name,
+        }
+    }
+
     pub fn name_mut(&mut self) -> &mut String {
         match self {
             Layer::Pixel(inner) => &mut inner.name,
@@ -195,19 +211,19 @@ where
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct NodeLayerParameters {
     opacity: f32,
-    blend_mode: BlendMode, // TODO: Replace with enum
     visible: bool,
     lock: bool,
     alpha_clip: bool,
     alpha_lock: bool,
+    pub blend_mode: BlendMode,
 }
 
 impl Default for NodeLayerParameters {
     fn default() -> Self {
         Self {
             opacity: 1f32,
-            blend_mode: BlendMode::default(),
             visible: true,
+            blend_mode: BlendMode::default(),
             lock: false,
             alpha_clip: false,
             alpha_lock: false,

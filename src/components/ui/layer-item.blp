@@ -1,0 +1,103 @@
+using Gtk 4.0;
+
+template $BrushLayerItem: Box {
+  orientation: vertical;
+  hexpand: true;
+
+  Box container {
+    margin-top: 4;
+
+    styles [
+      "card",
+    ]
+
+    Box layer_info {
+      orientation: horizontal;
+      spacing: 4;
+      margin-end: 4;
+      margin-start: 4;
+      margin-top: 4;
+      margin-bottom: 4;
+
+      Button revealer_toggle {
+        action-name: "layer.toggle-revealer";
+
+        Image icon {
+          pixel-size: 24;
+        }
+      }
+
+      Box {
+        hexpand: true;
+        valign: center;
+        orientation: vertical;
+
+        Label layer_name {
+          ellipsize: end;
+          halign: start;
+
+          styles [
+            "layer_label",
+          ]
+        }
+
+        Box {
+          orientation: horizontal;
+
+          Label opacity {
+            ellipsize: end;
+            halign: start;
+
+            styles [
+              "dimmed",
+              "subtext",
+            ]
+          }
+
+          Label blend_mode {
+            ellipsize: end;
+            halign: start;
+
+            styles [
+              "dimmed",
+              "subtext",
+            ]
+          }
+        }
+      }
+
+      Box toggles {
+        halign: end;
+
+        styles [
+          "linked",
+        ]
+
+        ToggleButton visible_toggle {}
+
+        ToggleButton alpha_clip_toggle {}
+
+        ToggleButton alpha_lock_toggle {}
+
+        ToggleButton lock_toggle {}
+      }
+    }
+  }
+
+  Gtk.Revealer children_revealer {
+    reveal-child: true;
+    transition-type: slide_down;
+    transition-duration: 150;
+    margin-start: 4;
+
+    Box {
+      Box filters {
+        orientation: vertical;
+      }
+
+      Box children {
+        orientation: vertical;
+      }
+    }
+  }
+}

@@ -1,17 +1,21 @@
 using Gtk 4.0;
-// using Adw 1;
+
 template $BrushLayerTree: Box {
   vexpand: true;
   orientation: vertical;
   margin-top: 4;
 
-  Box tree {
-    orientation: vertical;
-    vexpand: true;
+  ScrolledWindow {
+    has-frame: true;
+    hscrollbar-policy: never;
 
-    styles [
-      "frame",
-    ]
+    Box tree {
+      orientation: vertical;
+      vexpand: true;
+      margin-end: 4;
+      margin-start: 4;
+      margin-bottom: 4;
+    }
   }
 
   Box {
@@ -19,9 +23,18 @@ template $BrushLayerTree: Box {
     hexpand: true;
     margin-top: 4;
 
+    styles [
+      "linked",
+    ]
+
     Button add-layer {
       icon-name: "plus-large-symbolic";
-      action-name: "canvas.new-pixel";
+      action-name: "editor.new-pixel";
+    }
+
+    Button add-group {
+      icon-name: "folder-visiting-symbolic";
+      action-name: "editor.new-group";
     }
   }
 }

@@ -69,7 +69,7 @@ pub fn setup_gl(gl: &glow::Context) -> Option<(ShaderManager, NativeVertexArray)
 
 pub fn render_pass(canvas: &BrushEditorContent, area: &gtk::GLArea) -> glib::Propagation {
     let imp = canvas.imp();
-    let context = imp.context.borrow();
+    let project = imp.project.borrow();
 
     // OpenGL Context
     let Some(gl) = imp.gl_context.get() else {
@@ -87,7 +87,7 @@ pub fn render_pass(canvas: &BrushEditorContent, area: &gtk::GLArea) -> glib::Pro
 
     // Viewport parameters
     let (win_w, win_h) = (area.width() as f32, area.height() as f32);
-    let (canvas_w, canvas_h) = (context.width as f32, context.height as f32);
+    let (canvas_w, canvas_h) = (project.width as f32, project.height as f32);
     let zoom = imp.zoom.get();
     let (pos_x, pos_y) = imp.position.get();
     let rotation = imp.rotation.get();
@@ -125,7 +125,7 @@ pub fn render_pass(canvas: &BrushEditorContent, area: &gtk::GLArea) -> glib::Pro
             gl.uniform_matrix_4_f32_slice(Some(&loc), false, &mvp.to_cols_array());
         }
         if let Some(loc) = shaders.background.get_uniform(gl, "u_canvas_size") {
-            gl.uniform_2_f32(Some(&loc), context.width as f32, context.height as f32);
+            gl.uniform_2_f32(Some(&loc), project.width as f32, project.height as f32);
         }
         if let Some(loc) = shaders.background.get_uniform(gl, "u_zoom") {
             gl.uniform_1_f32(Some(&loc), zoom);
@@ -138,7 +138,7 @@ pub fn render_pass(canvas: &BrushEditorContent, area: &gtk::GLArea) -> glib::Pro
         gl.enable(glow::BLEND);
         gl.blend_func(glow::SRC_ALPHA, glow::ONE_MINUS_SRC_ALPHA);
 
-        render_layer_tree(&mut cache, gl, &context.layers, &mut shaders, &mvp.to_cols_array());
+        render_layer_tree(&mut cache, gl, &project.layers, &mut shaders, &mvp.to_cols_array());
 
         // Clean up state
         gl.disable(glow::BLEND);

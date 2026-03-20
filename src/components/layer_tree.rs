@@ -20,12 +20,6 @@
 
 use adw::subclass::prelude::*;
 use gtk::{glib, TemplateChild};
-use std::{
-    cell::{OnceCell, RefCell},
-    rc::Rc,
-};
-
-use crate::data::project::BrushProject;
 
 mod imp {
 
@@ -37,8 +31,6 @@ mod imp {
         // Widgets
         #[template_child]
         pub tree: TemplateChild<gtk::Box>,
-        // State pointers
-        pub state: OnceCell<Rc<RefCell<BrushProject>>>,
     }
 
     #[glib::object_subclass]

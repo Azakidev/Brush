@@ -27,5 +27,6 @@ pub mod editor;
 pub mod editor_content;
 pub mod color_chip;
 pub mod layer_tree;
+pub mod layer_item;
 // Other stuff
 pub mod utils;

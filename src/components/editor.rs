@@ -18,33 +18,41 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-use adw::{prelude::WidgetExt, subclass::prelude::*};
+use adw::{prelude::WidgetExt, subclass::prelude::*, TabPage};
+use gtk::glib::property::PropertySet;
+use gtk::glib::VariantTy;
 use gtk::{
     gdk, gio,
     glib::{
         self, clone,
         object::{Cast, ObjectExt},
-        property::PropertySet,
         types::StaticType,
         variant::ToVariant,
+        WeakRef,
     },
+    prelude::BoxExt,
 };
+use std::collections::HashMap;
+use std::str::FromStr;
 use std::{
     cell::{Cell, RefCell},
     rc::Rc,
 };
+use uuid::Uuid;
 
 use crate::{
     components::{
         color_chip::BrushColorChip,
         editor_content::BrushEditorContent,
+        layer_item::BrushLayerItem,
+        layer_tree::BrushLayerTree,
         utils::{color::oklab_to_rgba, editor_state::BrushEditorState},
     },
     data::project::BrushProject,
 };
+use std::ops::Sub;
 
 mod imp {
-    use crate::components::layer_tree::BrushLayerTree;
 
     use super::*;
 
@@ -78,9 +86,11 @@ mod imp {
         #[template_child]
         pub layer_tree: TemplateChild<BrushLayerTree>,
 
-        // State
+        // State, stored in the editor content but needs to be referenced by UI
         pub editor_state: Rc<RefCell<BrushEditorState>>,
         pub current_project: Rc<RefCell<BrushProject>>,
+        pub layer_widgets: Rc<RefCell<HashMap<Uuid, WeakRef<BrushLayerItem>>>>,
+        pub current_layer: Rc<RefCell<Uuid>>,
         pub current_zoom: Rc<Cell<f32>>,
         pub current_rotation: Rc<Cell<f32>>,
 
@@ -146,6 +156,34 @@ mod imp {
                 editor.set_property("show_toolbox", !editor.show_toolbox());
             });
 
+            klass.install_action("editor.new-pixel", None, |editor, _, _| {
+                if let Some(tab) = editor.imp().tab_view.selected_page() {
+                    let _ = tab.child().activate_action("canvas.new-pixel", None);
+                    editor.sync_tab(tab);
+                }
+            });
+
+            klass.install_action("editor.new-group", None, |editor, _, _| {
+                if let Some(tab) = editor.imp().tab_view.selected_page() {
+                    let _ = tab.child().activate_action("canvas.new-group", None);
+                    editor.sync_tab(tab);
+                }
+            });
+
+            klass.install_action(
+                "editor.activate-layer",
+                Some(VariantTy::STRING),
+                |editor, _, arg| {
+                    if let Some(var) = arg {
+                        let value = var.to_string(); // 'UUID'
+                        let id = value.get(1..value.len().sub(1)).unwrap(); // Remove quotes
+                        if let Ok(id) = Uuid::from_str(&id) {
+                            editor.activate_layer(id);
+                        }
+                    }
+                },
+            );
+
             klass.install_property_action("editor.change-tool", "active_tool");
         }
 
@@ -164,7 +202,6 @@ mod imp {
 
             if pspec.name() == "active-tool" {
                 let tool_name = value.get::<String>().unwrap();
-                // Update your internal engine state here
                 self.editor_state.borrow_mut().set_tool(&tool_name);
             }
         }
@@ -280,17 +317,84 @@ impl BrushEditor {
         glib::Object::new()
     }
 
+    fn activate_layer(&self, id: Uuid) {
+        let imp = self.imp();
+        let project = imp.current_project.borrow();
+        let layer_widgets = imp.layer_widgets.borrow();
+
+        let old_id = imp.current_layer.borrow().clone();
+
+        let page = imp
+            .tab_view
+            .selected_page()
+            .expect("Can't select a layer without being in a tab")
+            .child()
+            .downcast::<BrushEditorContent>()
+            .expect("There's no other option for a child of the tab view");
+
+        imp.current_layer.set(id);
+        page.imp().active_layer.set(Some(id));
+
+        if let Some(old_layer) = project.find_layer(old_id) {
+            if let Some(old_widget) = layer_widgets.get(&old_id) {
+                if let Some(widget) = old_widget.upgrade() {
+                    widget.update(&id, old_layer)
+                }
+            }
+        }
+
+        if let Some(new_layer) = project.find_layer(id) {
+            if let Some(new_widget) = layer_widgets.get(&id) {
+                if let Some(widget) = new_widget.upgrade() {
+                    widget.update(&id, new_layer)
+                }
+            }
+        }
+    }
+
+    fn sync_tab(&self, page: TabPage) {
+        let child = page.child();
+        if let Ok(canvas_tab) = child.downcast::<BrushEditorContent>() {
+            self.sync_project(&canvas_tab);
+        }
+    }
+
     fn sync_project(&self, tab: &BrushEditorContent) {
         let project = tab.project_context();
+        let layer_widgets = tab.widget_cache();
+
         let project_borrow = project.borrow();
+        let layer_borrow = layer_widgets.borrow();
 
         let zoom = tab.zoom();
         let rotation = tab.rotation();
 
-        // Update the Sidebar, Title, or Layer List
+        if let Some(selected_layer) = tab.selected_layer() {
+            self.imp().current_layer.set(selected_layer);
+        }
+
         self.imp().current_project.set(project_borrow.clone());
+        self.imp().layer_widgets.set(layer_borrow.clone());
+
         self.imp().current_zoom.set(zoom);
         self.imp().current_rotation.set(rotation);
+        self.sync_layers_panel();
+    }
+
+    fn sync_layers_panel(&self) {
+        let project = self.imp().current_project.borrow();
+        let selected_layer = self.imp().current_layer.borrow();
+        let layers_box = self.imp().layer_tree.get().imp().tree.get();
+        let mut widget_cache = self.imp().layer_widgets.borrow_mut();
+
+        while let Some(child) = layers_box.first_child() {
+            layers_box.remove(&child);
+        }
+
+        for layer in &project.layers {
+            let item = BrushLayerItem::new(layer, &selected_layer, &mut widget_cache);
+            layers_box.append(&item);
+        }
     }
 
     fn setup_accels(&self) {
