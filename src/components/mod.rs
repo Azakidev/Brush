@@ -21,12 +21,17 @@
 // UI
 pub mod window;
 // Pages
-pub mod welcome;
 pub mod editor;
+pub mod welcome;
 // Components
+// Canvas
 pub mod editor_content;
+// Colors
 pub mod color_chip;
-pub mod layer_tree;
+pub mod color_slider;
+pub mod color_wheel;
+// Layers
 pub mod layer_item;
+pub mod layer_tree;
 // Other stuff
 pub mod utils;

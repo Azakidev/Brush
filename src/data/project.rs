@@ -18,12 +18,19 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::{
+    collections::HashMap,
+    time::{SystemTime, UNIX_EPOCH},
+};
 
+use gtk::glib::WeakRef;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::data::{layer::Layer, layers::refs::RefLayer};
+use crate::{
+    components::layer_item::BrushLayerItem,
+    data::{layer::Layer, layer_types::refs::RefLayer},
+};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct BrushProject {
@@ -104,6 +111,46 @@ impl BrushProject {
         }
 
         Some(())
+    }
+
+    pub fn move_layer(
+        &mut self,
+        layer: &Layer,
+        index: usize,
+        old_parent: Option<Uuid>,
+        new_parent: Option<Uuid>,
+        widget_cache: &mut HashMap<Uuid, WeakRef<BrushLayerItem>>,
+    ) {
+        // Remove old
+        if let Some(parent_id) = old_parent {
+            if let Some(parent) = self.find_layer_mut(parent_id) {
+                if let Some(children) = parent.children() {
+                    if children.iter().any(|l| l.id() == layer.id()) {
+                        parent.remove_child(layer);
+                        widget_cache.remove(&parent.id());
+                        widget_cache.remove(&layer.id());
+                    }
+                }
+            }
+        } else {
+            if let Some(idx) = self.layers.iter().position(|l| l.id() == layer.id()) {
+                self.layers.remove(idx);
+                widget_cache.remove(&layer.id());
+            }
+        }
+        // Add on new position
+        if let Some(parent_id) = new_parent {
+            if let Some(parent) = self.find_layer_mut(parent_id) {
+                parent.append(index, layer.clone());
+                if let Some(widget) = widget_cache.get(&parent_id) {
+                    if let Some(item) = widget.upgrade() {
+                        item.reveal();
+                    }
+                }
+            }
+        } else {
+            self.layers.insert(index, layer.clone());
+        }
     }
 
     pub fn find_parent(&self, target_id: Uuid) -> Option<&Layer> {

@@ -19,6 +19,8 @@
  */
 
 pub mod project;
+pub mod file;
+
 pub mod layer;
-pub mod layers;
+pub mod layer_types;
 pub mod blend_modes;

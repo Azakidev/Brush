@@ -37,7 +37,7 @@ mod imp {
     #[template(resource = "/art/FatDawlf/Brush/layer-item.ui")]
     pub struct BrushLayerItem {
         #[template_child]
-        pub container: TemplateChild<gtk::Box>,
+        pub container: TemplateChild<adw::Bin>,
         // Information
         #[template_child]
         pub layer_name: TemplateChild<gtk::Label>,
@@ -116,7 +116,7 @@ glib::wrapper! {
 impl BrushLayerItem {
     pub fn new(
         layer: &Layer,
-        selected_layer: &Uuid,
+        selected_layer: &Option<Uuid>,
         cache: &mut HashMap<Uuid, WeakRef<BrushLayerItem>>,
     ) -> Self {
         // Return cached widget
@@ -131,7 +131,9 @@ impl BrushLayerItem {
 
         imp.layer.set(layer.id()).expect("ID already set");
 
-        obj.toggle_selected(selected_layer);
+        if let Some(selection) = selected_layer {
+            obj.toggle_selected(selection);
+        }
         obj.set_name(layer.name());
         obj.set_opacity(layer.opacity());
         obj.set_blend_mode(layer.blend_mode());
@@ -147,6 +149,10 @@ impl BrushLayerItem {
         cache.insert(layer.id(), obj.downgrade());
 
         obj
+    }
+
+    pub fn reveal(&self) {
+        self.imp().revealer_toggle.set_active(true);
     }
 
     fn bind_revealer(&self) {

@@ -1,10 +1,11 @@
 using Gtk 4.0;
+using Adw 1;
 
 template $BrushLayerItem: Box {
   orientation: vertical;
   hexpand: true;
 
-  Box container {
+  Adw.Bin container {
     margin-top: 4;
 
     styles [
@@ -28,6 +29,10 @@ template $BrushLayerItem: Box {
 
         Image icon {
           pixel-size: 24;
+
+          accessibility {
+            label: "Layer icon";
+          }
         }
       }
 

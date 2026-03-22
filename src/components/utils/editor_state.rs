@@ -44,7 +44,6 @@ impl Default for BrushEditorState {
     }
 }
 
-#[allow(dead_code)]
 impl BrushEditorState {
     pub fn swap_colors(&self) {
         self.primary_color.swap(&self.secondary_color);

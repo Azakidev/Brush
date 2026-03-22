@@ -89,22 +89,30 @@ mod imp {
         fn class_init(klass: &mut Self::Class) {
             klass.bind_template();
 
-            klass.install_action("canvas.zoom-in", None, move |content, _, _| {
+            klass.install_action("canvas.zoom-in", None, |content, _, _| {
                 content.zoom_by(0.05f32);
             });
 
-            klass.install_action("canvas.new-pixel", None, move |content, _, _| {
+            klass.install_action("canvas.new-pixel", None, |content, _, _| {
                 let layer = content.new_pixel_layer();
                 content.push_layer(layer);
             });
 
-            klass.install_action("canvas.new-group", None, move |content, _, _| {
+            klass.install_action("canvas.new-group", None, |content, _, _| {
                 let layer = content.new_group_layer();
                 content.push_layer(layer);
             });
 
-            klass.install_action("canvas.remove-layer", None, move |content, _, _| {
+            klass.install_action("canvas.remove-layer", None, |content, _, _| {
                 content.remove_layer();
+            });
+
+            klass.install_action("canvas.move-layer-up", None, |content, _, _| {
+                content.move_layer_up();
+            });
+
+            klass.install_action("canvas.move-layer-down", None, |content, _, _| {
+                content.move_layer_down();
             });
 
             klass.install_action(
@@ -215,7 +223,6 @@ mod imp {
 
                 canvas.connect_render(move |area, _context| {
                     let Some(obj) = weak_self.upgrade() else {
-                        // If the widget was destroyed, we must still return Propagation
                         return glib::Propagation::Proceed;
                     };
 
@@ -403,6 +410,204 @@ impl BrushEditorContent {
         }
     }
 
+    pub fn move_layer_up(&self) {
+        let mut project = self.imp().project.borrow_mut();
+        let mut widget_cache = self.imp().layer_widgets.borrow_mut();
+
+        if let Some(active) = self.imp().active_layer.get() {
+            if let Some(layer) = project.clone().find_layer(active) {
+                // Has a parent
+                if let Some(parent) = project.clone().find_parent(active) {
+                    if let Some(children) = parent.children() {
+                        let idx = children
+                            .iter()
+                            .position(|l| l.id() == active)
+                            .unwrap_or(children.len());
+                        // If it ain't the first one in the parent
+                        if idx != 0 {
+                            // Move it up by 1
+                            // And, if the previous layer is a group
+                            if let Some(previous) = children.get(idx - 1) {
+                                if let Some(previous_children) = previous.children() {
+                                    project.move_layer(
+                                        layer,
+                                        previous_children.len(),
+                                        Some(parent.id()),
+                                        Some(previous.id()),
+                                        &mut widget_cache,
+                                    )
+                                } else {
+                                    project.move_layer(
+                                        layer,
+                                        idx - 1,
+                                        Some(parent.id()),
+                                        Some(parent.id()),
+                                        &mut widget_cache,
+                                    );
+                                }
+                            }
+                        // If it is
+                        } else {
+                            // Bump it up a level
+                            // Grandparent found
+                            if let Some(grandparent) = project.clone().find_parent(parent.id()) {
+                                if let Some(children) = grandparent.children() {
+                                    let idx = children
+                                        .iter()
+                                        .position(|l| l.id() == parent.id())
+                                        .unwrap_or(children.len());
+                                    project.move_layer(
+                                        layer,
+                                        idx,
+                                        Some(parent.id()),
+                                        Some(grandparent.id()),
+                                        &mut widget_cache,
+                                    );
+                                }
+                            } else {
+                                // At project root
+                                let idx = project
+                                    .clone()
+                                    .layers
+                                    .iter()
+                                    .position(|l| l.id() == parent.id())
+                                    .unwrap_or(children.len());
+                                project.move_layer(
+                                    layer,
+                                    idx,
+                                    Some(parent.id()),
+                                    None,
+                                    &mut widget_cache,
+                                )
+                            }
+                        }
+                    }
+                // At project root
+                } else {
+                    let idx = project
+                        .layers
+                        .iter()
+                        .position(|l| l.id() == active)
+                        .unwrap_or(project.layers.len());
+                    if idx != 0 {
+                        if let Some(previous) = project.clone().layers.get(idx - 1) {
+                            if let Some(previous_children) = previous.children() {
+                                project.move_layer(
+                                    layer,
+                                    previous_children.len(),
+                                    None,
+                                    Some(previous.id()),
+                                    &mut widget_cache,
+                                )
+                            } else {
+                                project.move_layer(layer, idx - 1, None, None, &mut widget_cache);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    pub fn move_layer_down(&self) {
+        let mut project = self.imp().project.borrow_mut();
+        let mut widget_cache = self.imp().layer_widgets.borrow_mut();
+
+        if let Some(active) = self.imp().active_layer.get() {
+            if let Some(layer) = project.clone().find_layer(active) {
+                // Has a parent
+                if let Some(parent) = project.clone().find_parent(active) {
+                    if let Some(children) = parent.children() {
+                        let idx = children
+                            .iter()
+                            .position(|l| l.id() == active)
+                            .unwrap_or(children.len());
+                        // If it ain't the first one in the parent
+                        if idx != children.len() - 1 {
+                            // Move it up by 1
+                            // And, if the previous layer is a group
+                            if let Some(next) = children.get(idx + 1) {
+                                if next.children().is_some() {
+                                    project.move_layer(
+                                        layer,
+                                        0,
+                                        Some(parent.id()),
+                                        Some(next.id()),
+                                        &mut widget_cache,
+                                    )
+                                } else {
+                                    project.move_layer(
+                                        layer,
+                                        idx + 1,
+                                        Some(parent.id()),
+                                        Some(parent.id()),
+                                        &mut widget_cache,
+                                    );
+                                }
+                            }
+                        // If it is
+                        } else {
+                            // Bump it up a level
+                            // Grandparent found
+                            if let Some(grandparent) = project.clone().find_parent(parent.id()) {
+                                if let Some(children) = grandparent.children() {
+                                    let idx = children
+                                        .iter()
+                                        .position(|l| l.id() == parent.id())
+                                        .unwrap_or(children.len());
+                                    project.move_layer(
+                                        layer,
+                                        idx + 1,
+                                        Some(parent.id()),
+                                        Some(grandparent.id()),
+                                        &mut widget_cache,
+                                    );
+                                }
+                            } else {
+                                // At project root
+                                let idx = project
+                                    .clone()
+                                    .layers
+                                    .iter()
+                                    .position(|l| l.id() == parent.id())
+                                    .unwrap_or(children.len());
+                                project.move_layer(
+                                    layer,
+                                    idx + 1,
+                                    Some(parent.id()),
+                                    None,
+                                    &mut widget_cache,
+                                )
+                            }
+                        }
+                    }
+                // At project root
+                } else {
+                    let idx = project
+                        .layers
+                        .iter()
+                        .position(|l| l.id() == active)
+                        .unwrap_or(project.layers.len());
+                    if idx != project.layers.len() {
+                        if let Some(next) = project.clone().layers.get(idx + 1) {
+                            if let Some(next_children) = next.children() {
+                                project.move_layer(
+                                    layer,
+                                    0,
+                                    None,
+                                    Some(next.id()),
+                                    &mut widget_cache,
+                                )
+                            } else {
+                                project.move_layer(layer, idx + 1, None, None, &mut widget_cache);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     pub fn rename_layer(&self, uuid: Uuid, new_name: String) {
         let mut project = self.imp().project.borrow_mut();
         project.rename_layer(uuid, new_name);
@@ -449,6 +654,9 @@ impl BrushEditorContent {
             imp.project.borrow().height as f32,
         );
         let (viewport_width, viewport_height) = (self.width() as f32, self.height() as f32);
+
+        println!("Canvas size: {}, {}", canvas_width, canvas_height);
+        println!("Viewport size: {}, {}", viewport_width, viewport_height);
 
         let scale_x = viewport_width / canvas_width;
         let scale_y = viewport_height / canvas_height;

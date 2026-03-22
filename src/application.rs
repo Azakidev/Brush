@@ -21,7 +21,7 @@
 use adw::prelude::*;
 use adw::subclass::prelude::*;
 use gettextrs::gettext;
-use gtk::{gdk, gio, glib};
+use gtk::{gio, glib};
 
 use crate::config::VERSION;
 use crate::BrushWindow;
@@ -44,8 +44,6 @@ mod imp {
             self.parent_constructed();
             let obj = self.obj();
             obj.setup_gactions();
-            obj.set_accels_for_action("app.quit", &["<control>q"]);
-            obj.set_accels_for_action("win.new-document", &["<control>t"]);
         }
     }
 
@@ -89,13 +87,19 @@ impl BrushApplication {
     }
 
     fn setup_gactions(&self) {
-        let quit_action = gio::ActionEntry::builder("quit")
-            .activate(move |app: &Self, _, _| app.quit())
-            .build();
-        let about_action = gio::ActionEntry::builder("about")
-            .activate(move |app: &Self, _, _| app.show_about())
-            .build();
-        self.add_action_entries([quit_action, about_action]);
+        let actions = [
+            gio::ActionEntry::builder("quit")
+                .activate(|app: &Self, _, _| app.quit())
+                .build(),
+            gio::ActionEntry::builder("about")
+                .activate(|app: &Self, _, _| app.show_about())
+                .build(),
+        ];
+
+        self.add_action_entries(actions);
+
+        self.set_accels_for_action("app.quit", &["<Ctrl>q"]);
+        self.set_accels_for_action("win.new-document", &["<Ctrl>t"]);
     }
 
     fn setup_icons(&self) {

@@ -23,7 +23,7 @@ use uuid::Uuid;
 
 use crate::data::{
     blend_modes::BlendMode,
-    layers::{
+    layer_types::{
         fill::{FillLayerData, FillLayerParameters}, filter::{FilterData}, group::GroupData, pixel::PixelData
     },
 };

@@ -20,7 +20,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::data::{layer::{BrushLayer, LayerParameter}, layers::pixel::PixelData};
+use crate::data::{layer::{BrushLayer, LayerParameter}, layer_types::pixel::PixelData};
 
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

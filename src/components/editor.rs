@@ -90,7 +90,7 @@ mod imp {
         pub editor_state: Rc<RefCell<BrushEditorState>>,
         pub current_project: Rc<RefCell<BrushProject>>,
         pub layer_widgets: Rc<RefCell<HashMap<Uuid, WeakRef<BrushLayerItem>>>>,
-        pub current_layer: Rc<RefCell<Uuid>>,
+        pub current_layer: Rc<RefCell<Option<Uuid>>>,
         pub current_zoom: Rc<Cell<f32>>,
         pub current_rotation: Rc<Cell<f32>>,
 
@@ -183,6 +183,28 @@ mod imp {
                     }
                 },
             );
+
+            klass.install_action("editor.delete-layer", None, |editor, _, _| {
+                if let Some(tab) = editor.imp().tab_view.selected_page() {
+                    let _ = tab.child().activate_action("canvas.remove-layer", None);
+                    editor.sync_tab(tab);
+                }
+            });
+
+
+            klass.install_action("editor.move-layer-up", None, |editor, _, _| {
+                if let Some(tab) = editor.imp().tab_view.selected_page() {
+                    let _ = tab.child().activate_action("canvas.move-layer-up", None);
+                    editor.sync_tab(tab);
+                }
+            });
+            
+            klass.install_action("editor.move-layer-down", None, |editor, _, _| {
+                if let Some(tab) = editor.imp().tab_view.selected_page() {
+                    let _ = tab.child().activate_action("canvas.move-layer-down", None);
+                    editor.sync_tab(tab);
+                }
+            });
 
             klass.install_action("editor.delete-layer", None, |editor, _, _| {
                 if let Some(tab) = editor.imp().tab_view.selected_page() {
@@ -329,8 +351,6 @@ impl BrushEditor {
         let project = imp.current_project.borrow();
         let layer_widgets = imp.layer_widgets.borrow();
 
-        let old_id = imp.current_layer.borrow().clone();
-
         let page = imp
             .tab_view
             .selected_page()
@@ -339,16 +359,18 @@ impl BrushEditor {
             .downcast::<BrushEditorContent>()
             .expect("There's no other option for a child of the tab view");
 
-        imp.current_layer.set(id);
-        page.imp().active_layer.set(Some(id));
-
-        if let Some(old_layer) = project.find_layer(old_id) {
-            if let Some(old_widget) = layer_widgets.get(&old_id) {
-                if let Some(widget) = old_widget.upgrade() {
-                    widget.update(&id, old_layer)
+        if let Some(old_id) = imp.current_layer.borrow().clone() {
+            if let Some(old_layer) = project.find_layer(old_id) {
+                if let Some(old_widget) = layer_widgets.get(&old_id) {
+                    if let Some(widget) = old_widget.upgrade() {
+                        widget.update(&id, old_layer)
+                    }
                 }
             }
         }
+
+        imp.current_layer.set(Some(id));
+        page.imp().active_layer.set(Some(id));
 
         if let Some(new_layer) = project.find_layer(id) {
             if let Some(new_widget) = layer_widgets.get(&id) {
@@ -377,7 +399,7 @@ impl BrushEditor {
         let rotation = tab.rotation();
 
         if let Some(selected_layer) = tab.selected_layer() {
-            self.imp().current_layer.set(selected_layer);
+            self.imp().current_layer.set(Some(selected_layer));
         }
 
         self.imp().current_project.set(project_borrow.clone());
@@ -483,6 +505,22 @@ impl BrushEditor {
                 gdk::ModifierType::SHIFT_MASK,
             )),
             Some(gtk::NamedAction::new("editor.new-group")),
+        ));
+
+        imp.shortcut_controller.add_shortcut(gtk::Shortcut::new(
+            Some(gtk::KeyvalTrigger::new(
+                gdk::Key::Up,
+                gdk::ModifierType::ALT_MASK,
+            )),
+            Some(gtk::NamedAction::new("editor.move-layer-up")),
+        ));
+
+        imp.shortcut_controller.add_shortcut(gtk::Shortcut::new(
+            Some(gtk::KeyvalTrigger::new(
+                gdk::Key::Down,
+                gdk::ModifierType::ALT_MASK,
+            )),
+            Some(gtk::NamedAction::new("editor.move-layer-down")),
         ));
     }
 
