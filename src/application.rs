@@ -62,7 +62,6 @@ mod imp {
                 window.upcast()
             });
 
-            application.setup_css();
             application.setup_icons();
 
             // Ask the window manager/compositor to present the window
@@ -97,18 +96,6 @@ impl BrushApplication {
             .activate(move |app: &Self, _, _| app.show_about())
             .build();
         self.add_action_entries([quit_action, about_action]);
-    }
-
-    fn setup_css(&self) {
-        let provider = gtk::CssProvider::new();
-        provider.load_from_resource("/art/FatDawlf/Brush/styles.css");
-        if let Some(display) = gdk::Display::default() {
-            gtk::style_context_add_provider_for_display(
-                &display,
-                &provider,
-                gtk::STYLE_PROVIDER_PRIORITY_APPLICATION,
-            );
-        }
     }
 
     fn setup_icons(&self) {
