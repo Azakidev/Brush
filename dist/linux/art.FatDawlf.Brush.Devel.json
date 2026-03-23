@@ -1,5 +1,5 @@
 {
-    "id" : "art.FatDawlf.Brush",
+    "id" : "art.FatDawlf.Brush.Devel",
     "runtime" : "org.gnome.Platform",
     "runtime-version" : "50",
     "sdk" : "org.gnome.Sdk",
@@ -39,6 +39,10 @@
             "name" : "brush",
             "builddir" : true,
             "buildsystem" : "meson",
+            "config-opts": [
+                "-Dprofile=dev",
+                "-Dapp_id_suffix=.Devel"
+            ],
             "sources" : [
                 {
                     "type" : "git",

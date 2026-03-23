@@ -43,7 +43,7 @@ fn main() -> glib::ExitCode {
         .expect("Could not load resources");
     gio::resources_register(&resources);
 
-    let app = BrushApplication::new("art.FatDawlf.Brush", &gio::ApplicationFlags::empty());
+    let app = BrushApplication::new(config::APP_ID, &gio::ApplicationFlags::empty());
 
     app.run()
 }

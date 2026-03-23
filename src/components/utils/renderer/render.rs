@@ -156,7 +156,7 @@ unsafe fn render_layer_tree(
     gl: &glow::Context,
     layers: &[Layer],
     shaders: &mut ShaderManager,
-    mvp: &[f32],
+    mvp: &[f32; 16],
 ) {
     let tree: Vec<&Layer> = layers.iter().rev().collect();
     for layer in tree {
@@ -187,7 +187,7 @@ unsafe fn draw_pixel_layer(
     gl: &glow::Context,
     layer: &Layer,
     shaders: &mut ShaderManager,
-    mvp: &[f32],
+    mvp: &[f32; 16],
 ) {
     shaders.layer.bind(gl);
     if let Some(mvp_loc) = shaders.layer.get_uniform(gl, "u_mvp") {

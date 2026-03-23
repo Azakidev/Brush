@@ -27,4 +27,4 @@ bytemuck = { version = "1.25" }
 [dependencies.adw]
 package = "libadwaita"
 version = "0.9"
-features = ["v1_9"]
+features = ["v1_8"]

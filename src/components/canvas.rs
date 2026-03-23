@@ -590,7 +590,7 @@ impl BrushCanvas {
                         .unwrap_or(project.layers.len());
                     if idx != project.layers.len() {
                         if let Some(next) = project.clone().layers.get(idx + 1) {
-                            if let Some(next_children) = next.children() {
+                            if next.children().is_some() {
                                 project.move_layer(
                                     layer,
                                     0,

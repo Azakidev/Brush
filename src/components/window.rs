@@ -20,11 +20,13 @@
 
 use crate::components::editor::BrushEditor;
 use crate::components::welcome::BrushWelcome;
-use adw::subclass::prelude::*;
 use adw::prelude::*;
+use adw::subclass::prelude::*;
 use gtk::{gio, glib};
 
 mod imp {
+    use crate::config;
+
     use super::*;
 
     #[derive(Debug, Default, gtk::CompositeTemplate)]
@@ -73,7 +75,16 @@ mod imp {
         }
     }
 
-    impl ObjectImpl for BrushWindow {}
+    impl ObjectImpl for BrushWindow {
+        fn constructed(&self) {
+            self.parent_constructed();
+            let obj = self.obj();
+
+            if config::APP_ID.ends_with(".Devel") {
+                obj.add_css_class("devel");
+            }
+        }
+    }
     impl WidgetImpl for BrushWindow {}
     impl WindowImpl for BrushWindow {}
     impl ApplicationWindowImpl for BrushWindow {}

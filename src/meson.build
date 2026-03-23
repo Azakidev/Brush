@@ -1,59 +1,53 @@
 pkgdatadir = get_option('prefix') / get_option('datadir') / meson.project_name()
 gnome = import('gnome')
 
-blueprints = custom_target('blueprints',
+blueprints = custom_target(
+  'blueprints',
   input: files(
-    'components/ui/shortcuts-dialog.blp',
-    'components/ui/window.blp',
-    'components/ui/welcome.blp',
-    'components/ui/editor.blp',
     'components/ui/canvas.blp',
-    'components/ui/layer-tree.blp',
+    'components/ui/editor.blp',
     'components/ui/layer-item.blp',
+    'components/ui/layer-tree.blp',
+    'components/ui/shortcuts-dialog.blp',
+    'components/ui/welcome.blp',
+    'components/ui/window.blp',
   ),
   output: '.',
-  command: [find_program('blueprint-compiler'), 'batch-compile', '@OUTPUT@', '@CURRENT_SOURCE_DIR@/components/ui', '@INPUT@'],
+  command: [
+    find_program('blueprint-compiler'),
+    'batch-compile',
+    '@OUTPUT@',
+    '@CURRENT_SOURCE_DIR@/components/ui',
+    '@INPUT@',
+  ],
 )
 
-gnome.compile_resources('brush',
+gnome.compile_resources(
+  'brush',
   'components/ui/brush.gresource.xml',
-  source_dir: [
-      'components/ui',
-      '../data/icons/hicolor/scalable/actions/'
-    ],
+  source_dir: ['components/ui', '../data/icons/hicolor/scalable/actions/'],
   gresource_bundle: true,
   install: true,
   install_dir: pkgdatadir,
   dependencies: blueprints,
 )
 
-conf = configuration_data()
-conf.set_quoted('VERSION', meson.project_version())
-conf.set_quoted('GETTEXT_PACKAGE', 'brush')
-conf.set_quoted('LOCALEDIR', get_option('prefix') / get_option('localedir'))
-conf.set_quoted('PKGDATADIR', pkgdatadir)
+app_id = 'art.FatDawlf.Brush@0@'.format(get_option('app_id_suffix'))
 
-configure_file(
-    input: 'config.rs.in',
-    output: 'config.rs',
-    configuration: conf
-)
-
-# Copy the config.rs output to the source directory.
-run_command(
-  'cp',
-  meson.project_build_root() / 'src' / 'config.rs',
-  meson.project_source_root() / 'src' / 'config.rs',
-  check: true
-)
-
-cargo_bin  = find_program('cargo')
-cargo_opt  = [ '--manifest-path', meson.project_source_root() / 'Cargo.toml' ]
-cargo_opt += [ '--target-dir', meson.project_build_root()  / 'src' ]
-cargo_env  = [ 'CARGO_HOME=' + meson.project_build_root()  / 'cargo-home' ]
+cargo_bin = find_program('cargo')
+cargo_opt = ['--manifest-path', meson.project_source_root() / 'Cargo.toml']
+cargo_opt += ['--target-dir', meson.project_build_root() / 'src']
+cargo_env = {
+  'CARGO_HOME': meson.project_build_root() / 'cargo-home',
+  'APP_ID': app_id,
+  'VERSION': meson.project_version(),
+  'GETTEXT_PACKAGE': 'brush',
+  'LOCALEDIR': get_option('prefix') / get_option('localedir'),
+  'PKGDATADIR': pkgdatadir,
+}
 
 if get_option('buildtype') == 'release'
-  cargo_opt += [ '--release' ]
+  cargo_opt += ['--release']
   rust_target = 'release'
 else
   rust_target = 'debug'
@@ -67,9 +61,14 @@ cargo_build = custom_target(
   console: true,
   install: true,
   install_dir: get_option('bindir'),
+  env: cargo_env,
   command: [
-    'env', cargo_env,
-    cargo_bin, 'build',
-    cargo_opt, '&&', 'cp', 'src' / rust_target / meson.project_name(), '@OUTPUT@',
-  ]
+    cargo_bin,
+    'build',
+    cargo_opt,
+    '&&',
+    'cp',
+    'src' / rust_target / meson.project_name(),
+    '@OUTPUT@',
+  ],
 )
