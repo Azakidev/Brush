@@ -25,7 +25,7 @@ pub mod editor;
 pub mod welcome;
 // Components
 // Canvas
-pub mod editor_content;
+pub mod canvas;
 // Colors
 pub mod color_chip;
 pub mod color_slider;

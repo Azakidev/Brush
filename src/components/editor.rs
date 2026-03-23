@@ -43,7 +43,7 @@ use uuid::Uuid;
 use crate::{
     components::{
         color_chip::BrushColorChip,
-        editor_content::BrushEditorContent,
+        canvas::BrushCanvas,
         layer_item::BrushLayerItem,
         layer_tree::BrushLayerTree,
         utils::{color::oklab_to_rgba, editor_state::BrushEditorState},
@@ -277,7 +277,7 @@ mod imp {
                                 .build();
 
                             let child = page.child();
-                            if let Ok(canvas_tab) = child.downcast::<BrushEditorContent>() {
+                            if let Ok(canvas_tab) = child.downcast::<BrushCanvas>() {
                                 obj.obj().sync_project(&canvas_tab);
                             }
                         }
@@ -356,7 +356,7 @@ impl BrushEditor {
             .selected_page()
             .expect("Can't select a layer without being in a tab")
             .child()
-            .downcast::<BrushEditorContent>()
+            .downcast::<BrushCanvas>()
             .expect("There's no other option for a child of the tab view");
 
         if let Some(old_id) = imp.current_layer.borrow().clone() {
@@ -383,12 +383,12 @@ impl BrushEditor {
 
     fn sync_tab(&self, page: TabPage) {
         let child = page.child();
-        if let Ok(canvas_tab) = child.downcast::<BrushEditorContent>() {
+        if let Ok(canvas_tab) = child.downcast::<BrushCanvas>() {
             self.sync_project(&canvas_tab);
         }
     }
 
-    fn sync_project(&self, tab: &BrushEditorContent) {
+    fn sync_project(&self, tab: &BrushCanvas) {
         let project = tab.project_context();
         let layer_widgets = tab.widget_cache();
 
@@ -532,7 +532,7 @@ impl BrushEditor {
     */
     fn new_document(&self) -> adw::TabPage {
         let tab_view = &self.imp().tab_view;
-        let editor_content = BrushEditorContent::new(self.imp().editor_state.clone());
+        let editor_content = BrushCanvas::new(self.imp().editor_state.clone());
 
         let tab_page = tab_view.append(&editor_content);
         tab_page.set_live_thumbnail(true);

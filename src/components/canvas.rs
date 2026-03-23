@@ -1,4 +1,4 @@
-/* editor.rs
+/* canvas.rs
  *
  * Copyright 2026 FatDawlf
  *
@@ -56,8 +56,8 @@ mod imp {
 
     #[allow(dead_code)]
     #[derive(Default, Debug, gtk::CompositeTemplate)]
-    #[template(resource = "/art/FatDawlf/Brush/editor-content.ui")]
-    pub struct BrushEditorContent {
+    #[template(resource = "/art/FatDawlf/Brush/canvas.ui")]
+    pub struct BrushCanvas {
         // Template widgets
         #[template_child]
         pub canvas: TemplateChild<gtk::GLArea>,
@@ -81,9 +81,9 @@ mod imp {
     }
 
     #[glib::object_subclass]
-    impl ObjectSubclass for BrushEditorContent {
-        const NAME: &'static str = "BrushEditorContent";
-        type Type = super::BrushEditorContent;
+    impl ObjectSubclass for BrushCanvas {
+        const NAME: &'static str = "BrushCanvas";
+        type Type = super::BrushCanvas;
         type ParentType = adw::Bin;
 
         fn class_init(klass: &mut Self::Class) {
@@ -162,7 +162,7 @@ mod imp {
         }
     }
 
-    impl ObjectImpl for BrushEditorContent {
+    impl ObjectImpl for BrushCanvas {
         fn constructed(&self) {
             self.parent_constructed();
 
@@ -231,17 +231,17 @@ mod imp {
             }
         }
     }
-    impl WidgetImpl for BrushEditorContent {}
-    impl BinImpl for BrushEditorContent {}
+    impl WidgetImpl for BrushCanvas {}
+    impl BinImpl for BrushCanvas {}
 }
 
 glib::wrapper! {
-    pub struct BrushEditorContent(ObjectSubclass<imp::BrushEditorContent>)
+    pub struct BrushCanvas(ObjectSubclass<imp::BrushCanvas>)
         @extends gtk::Widget, adw::Bin,
         @implements gtk::Accessible, gtk::Buildable, gtk::ConstraintTarget;
 }
 
-impl BrushEditorContent {
+impl BrushCanvas {
     pub fn new(editor_state: Rc<RefCell<BrushEditorState>>) -> Self {
         let obj: Self = glib::Object::new();
         obj.imp()
@@ -668,7 +668,7 @@ impl BrushEditorContent {
         imp.canvas.get().queue_draw();
     }
 
-    pub fn setup_rotate_controller(&self) {
+    fn setup_rotate_controller(&self) {
         let controller = gtk::GestureRotate::new();
 
         let start_rotate = Rc::new(Cell::new(0f32));
@@ -723,7 +723,7 @@ impl BrushEditorContent {
         self.add_controller(controller);
     }
 
-    pub fn setup_zoom_controller(&self) {
+    fn setup_zoom_controller(&self) {
         let controller = gtk::GestureZoom::new();
 
         let start_zoom = Rc::new(Cell::new(0f32));
@@ -786,7 +786,7 @@ impl BrushEditorContent {
         self.add_controller(controller);
     }
 
-    pub fn setup_drag_controller(&self) {
+    fn setup_drag_controller(&self) {
         let drag = gtk::GestureDrag::new();
 
         let start_pos = Rc::new(Cell::new((0f32, 0f32)));
@@ -802,19 +802,32 @@ impl BrushEditorContent {
             }
         ));
 
+
         drag.connect_drag_update(clone!(
             #[weak(rename_to = obj)]
             self,
             #[strong]
             start_pos,
-            move |_, offset_x, offset_y| {
+            move |gesture, offset_x, offset_y| {
                 let (orig_x, orig_y) = start_pos.get();
 
                 if let Some(state) = obj.imp().editor_state.get() {
                     let state = state.borrow();
+                    let tool = state.tool.borrow();
 
-                    if state.tool.borrow().eq(&BrushTool::Move) {
-                        obj.move_to(orig_x + offset_x as f32, orig_y + offset_y as f32);
+                    match *tool {
+                        BrushTool::Move => obj.move_to(orig_x + offset_x as f32, orig_y + offset_y as f32),
+                        BrushTool::Brush => {
+                            if let Some(event) = gesture.last_event(None) {
+                                let pressure = event.axis(gdk::AxisUse::Pressure).unwrap_or(1.0);
+                                let x_tilt = event.axis(gdk::AxisUse::Xtilt);
+                                let y_tilt = event.axis(gdk::AxisUse::Ytilt);
+                                println!("Pressure: {:?}", pressure);
+                                println!("X tilt: {:?}", x_tilt);
+                                println!("Y tilt: {:?}", y_tilt);
+                            }
+                        },
+                        _ => unimplemented!()
                     }
                 }
 
@@ -825,7 +838,7 @@ impl BrushEditorContent {
         self.add_controller(drag);
     }
 
-    pub fn setup_motion_controller(&self) {
+    fn setup_motion_controller(&self) {
         let motion = gtk::EventControllerMotion::new();
         let weak_self = self.downgrade();
 
@@ -837,7 +850,7 @@ impl BrushEditorContent {
         self.add_controller(motion);
     }
 
-    pub fn setup_accels_controller(&self) {
+    fn setup_accels_controller(&self) {
         let controller = gtk::ShortcutController::new();
         controller.set_scope(gtk::ShortcutScope::Global);
 
@@ -892,7 +905,7 @@ impl BrushEditorContent {
         self.add_controller(controller);
     }
 
-    pub fn setup_scroll_controller(&self) {
+    fn setup_scroll_controller(&self) {
         let scroll = gtk::EventControllerScroll::new(gtk::EventControllerScrollFlags::VERTICAL);
 
         let weak_self = self.downgrade();

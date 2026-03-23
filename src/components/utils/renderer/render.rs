@@ -27,7 +27,7 @@ use uuid::Uuid;
 
 use crate::{
     components::{
-        editor_content::BrushEditorContent, utils::renderer::shader_manager::ShaderManager,
+        canvas::BrushCanvas, utils::renderer::shader_manager::ShaderManager,
     },
     data::layer::Layer,
 };
@@ -67,7 +67,7 @@ pub fn setup_gl(gl: &glow::Context) -> Option<(ShaderManager, NativeVertexArray)
     }
 }
 
-pub fn render_pass(canvas: &BrushEditorContent, area: &gtk::GLArea) -> glib::Propagation {
+pub fn render_pass(canvas: &BrushCanvas, area: &gtk::GLArea) -> glib::Propagation {
     let imp = canvas.imp();
     let project = imp.project.borrow();
 
@@ -156,7 +156,7 @@ unsafe fn render_layer_tree(
     gl: &glow::Context,
     layers: &[Layer],
     shaders: &mut ShaderManager,
-    mvp: &[f32; 16],
+    mvp: &[f32],
 ) {
     let tree: Vec<&Layer> = layers.iter().rev().collect();
     for layer in tree {
@@ -187,7 +187,7 @@ unsafe fn draw_pixel_layer(
     gl: &glow::Context,
     layer: &Layer,
     shaders: &mut ShaderManager,
-    mvp: &[f32; 16],
+    mvp: &[f32],
 ) {
     shaders.layer.bind(gl);
     if let Some(mvp_loc) = shaders.layer.get_uniform(gl, "u_mvp") {

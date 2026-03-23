@@ -25,11 +25,11 @@ use uuid::Uuid;
 use crate::data::{layer::Layer, project::BrushProject};
 
 #[allow(dead_code)]
-pub fn save_project(path: &Path, project: &BrushProject) {
+pub fn save_project(_path: &Path, project: &BrushProject) {
     // Walk through each layer and save it
     save_layers(&project.layers);
     // Save the main project structure
-    if let Ok(structure) = serde_json::to_string(project) {
+    if let Ok(_structure) = serde_json::to_string(project) {
         todo!();
     }
     // Generate a preview
@@ -61,6 +61,6 @@ fn save_layers(layers: &Vec<Layer>) {
 }
 
 #[allow(dead_code)]
-fn save_pixel_data(id: Uuid, pixels: Vec<u8>) {
+fn save_pixel_data(_id: Uuid, _pixels: Vec<u8>) {
     todo!();
 }

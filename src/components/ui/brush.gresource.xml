@@ -5,7 +5,7 @@
         <file preprocess="xml-stripblanks">window.ui</file>
         <file preprocess="xml-stripblanks">welcome.ui</file>
         <file preprocess="xml-stripblanks">editor.ui</file>
-        <file preprocess="xml-stripblanks">editor-content.ui</file>
+        <file preprocess="xml-stripblanks">canvas.ui</file>
         <file preprocess="xml-stripblanks">layer-tree.ui</file>
         <file preprocess="xml-stripblanks">layer-item.ui</file>
         <file compressed="true">style.css</file>
