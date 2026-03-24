@@ -21,13 +21,14 @@
 use std::collections::HashMap;
 
 use adw::subclass::prelude::ObjectSubclassIsExt;
-use glow::{HasContext, NativeTexture, NativeVertexArray, PixelUnpackData};
+use glow::{HasContext, NativeVertexArray};
 use gtk::{glib, prelude::WidgetExt};
 use uuid::Uuid;
 
 use crate::{
     components::{
-        canvas::BrushCanvas, utils::renderer::shader_manager::ShaderManager,
+        canvas::BrushCanvas,
+        utils::renderer::{buffer::LayerBuffer, shader_manager::ShaderManager},
     },
     data::layer::Layer,
 };
@@ -36,7 +37,6 @@ pub fn setup_gl(gl: &glow::Context) -> Option<(ShaderManager, NativeVertexArray)
     unsafe {
         let manager = ShaderManager::new(gl);
 
-        // [x, y, u, v]
         let vertices: [f32; 16] = [
             0.0, 0.0, 0.0, 0.0, // Top Left
             1.0, 0.0, 1.0, 0.0, // Top Right
@@ -69,7 +69,7 @@ pub fn setup_gl(gl: &glow::Context) -> Option<(ShaderManager, NativeVertexArray)
 
 pub fn render_pass(canvas: &BrushCanvas, area: &gtk::GLArea) -> glib::Propagation {
     let imp = canvas.imp();
-    let project = imp.project.borrow();
+    let mut project = imp.project.borrow_mut();
 
     // OpenGL Context
     let Some(gl) = imp.gl_context.get() else {
@@ -138,7 +138,17 @@ pub fn render_pass(canvas: &BrushCanvas, area: &gtk::GLArea) -> glib::Propagatio
         gl.enable(glow::BLEND);
         gl.blend_func(glow::SRC_ALPHA, glow::ONE_MINUS_SRC_ALPHA);
 
-        render_layer_tree(&mut cache, gl, &project.layers, &mut shaders, &mvp.to_cols_array());
+        render_layer_tree(
+            &mut cache,
+            gl,
+            &mut project.layers,
+            &mut shaders,
+            &mvp.to_cols_array(),
+            win_w as i32,
+            win_h as i32,
+            canvas_w as f32,
+            canvas_h as f32,
+        );
 
         // Clean up state
         gl.disable(glow::BLEND);
@@ -152,13 +162,17 @@ pub fn render_pass(canvas: &BrushCanvas, area: &gtk::GLArea) -> glib::Propagatio
 }
 
 unsafe fn render_layer_tree(
-    cache: &mut HashMap<Uuid, NativeTexture>,
+    cache: &mut HashMap<Uuid, LayerBuffer>,
     gl: &glow::Context,
-    layers: &[Layer],
+    layers: &mut [Layer],
     shaders: &mut ShaderManager,
     mvp: &[f32; 16],
+    win_w: i32,
+    win_h: i32,
+    canvas_w: f32,
+    canvas_h: f32,
 ) {
-    let tree: Vec<&Layer> = layers.iter().rev().collect();
+    let tree: Vec<&mut Layer> = layers.iter_mut().rev().collect();
     for layer in tree {
         if !layer.visible() {
             continue;
@@ -166,13 +180,61 @@ unsafe fn render_layer_tree(
 
         match layer {
             Layer::Pixel(_) => {
-                draw_pixel_layer(cache, gl, layer, shaders, mvp);
+                let buffer = get_or_create_buffer(cache, gl, &layer);
+                if layer.is_dirty() {
+                    gl.bind_texture(glow::TEXTURE_2D, Some(buffer.texture));
+
+                    unsafe {
+                        gl.tex_sub_image_2d(
+                            glow::TEXTURE_2D,
+                            0,
+                            0,
+                            0,
+                            layer.width() as i32,
+                            layer.height() as i32,
+                            glow::RGBA,
+                            glow::UNSIGNED_BYTE,
+                            glow::PixelUnpackData::Slice(layer.pixel_data()),
+                        );
+                    }
+                    layer.set_dirty(false); // Reset the flag
+                }
+                composite_buffer(gl, &buffer, &layer, shaders, mvp, canvas_w, canvas_h);
             }
             Layer::Group(_) => {
-                let children = layer
-                    .children()
-                    .expect("Failed to get children from group layer");
-                render_layer_tree(cache, gl, children, shaders, mvp);
+                let (gx, gy) = (layer.x(), layer.y());
+                let (gw, gh) = (layer.width() as i32, layer.height() as i32);
+                let group_buffer = get_or_create_buffer(cache, gl, layer);
+
+                gl.bind_framebuffer(glow::FRAMEBUFFER, Some(group_buffer.framebuffer));
+                gl.viewport(0, 0, gw, gh);
+                gl.clear_color(0.0, 0.0, 0.0, 0.0);
+                gl.clear(glow::COLOR_BUFFER_BIT);
+
+                let local_mvp =
+                    glam::Mat4::from_translation(glam::vec3(-gx as f32, -gy as f32, 0.0));
+
+                if let Some(children) = layer.children_mut() {
+                    render_layer_tree(
+                        cache,
+                        gl,
+                        children,
+                        shaders,
+                        &local_mvp.to_cols_array(),
+                        win_w,
+                        win_h,
+                        canvas_w,
+                        canvas_h
+                    );
+                } else {
+                    continue; // Don't continue with this layer if somehow a group fails to get
+                              // its children, should be unreachable but you're never sure
+                }
+
+                gl.bind_framebuffer(glow::FRAMEBUFFER, None);
+                gl.viewport(0, 0, win_w as i32, win_h as i32);
+
+                composite_buffer(gl, &group_buffer, layer, shaders, mvp, canvas_w, canvas_h);
             }
             Layer::Fill(_) => {
                 todo!()
@@ -182,105 +244,63 @@ unsafe fn render_layer_tree(
     }
 }
 
-unsafe fn draw_pixel_layer(
-    cache: &mut HashMap<Uuid, NativeTexture>,
+pub fn get_or_create_buffer(
+    cache: &mut HashMap<Uuid, LayerBuffer>,
     gl: &glow::Context,
     layer: &Layer,
-    shaders: &mut ShaderManager,
-    mvp: &[f32; 16],
-) {
-    shaders.layer.bind(gl);
-    if let Some(mvp_loc) = shaders.layer.get_uniform(gl, "u_mvp") {
-        gl.uniform_matrix_4_f32_slice(Some(&mvp_loc), false, mvp);
+) -> LayerBuffer {
+    // If dimensions changed, we must reallocate to avoid stretching
+    let needs_realloc = cache
+        .get(&layer.id())
+        .map(|b| b.width != layer.width() || b.height != layer.height())
+        .unwrap_or(false);
+
+    if needs_realloc {
+        cache.remove(&layer.id());
     }
 
-    if let Some(texture) = prepare_texture(
-        cache,
-        gl,
-        layer.id(),
-        layer.width(),
-        layer.height(),
-        &layer.pixel_data().unwrap(),
-    ) {
-        gl.bind_texture(glow::TEXTURE_2D, Some(texture));
-    }
+    let buffer = cache.entry(layer.id()).or_insert_with(|| unsafe {
+        LayerBuffer::new(
+            gl,
+            layer.x(),
+            layer.y(),
+            layer.width(),
+            layer.height(),
+            layer.pixel_data(),
+        )
+    });
 
-    if let Some(alpha_loc) = shaders.layer.get_uniform(gl, "u_opacity") {
-        gl.uniform_1_f32(Some(&alpha_loc), layer.opacity());
-    }
-
-    gl.draw_arrays(glow::TRIANGLE_STRIP, 0, 4);
+    return buffer.clone();
 }
 
-fn prepare_texture(
-    cache: &mut HashMap<Uuid, NativeTexture>,
+pub unsafe fn composite_buffer(
     gl: &glow::Context,
-    layer_id: uuid::Uuid,
-    width: u32,
-    height: u32,
-    pixels: &[u8],
-) -> Option<glow::Texture> {
+    buffer: &LayerBuffer,
+    layer: &Layer,
+    shaders: &mut ShaderManager,
+    global_mvp: &[f32; 16],
+    canvas_w: f32,
+    canvas_h: f32,
+) {
+    shaders.layer.bind(gl);
 
-    if let Some(&tex) = cache.get(&layer_id) {
-        return Some(tex);
+    let model = glam::Mat4::from_translation(glam::vec3(layer.x() as f32, layer.y() as f32, 0.0))
+        * glam::Mat4::from_scale(glam::vec3(
+            layer.width() as f32 / canvas_w,
+            layer.height() as f32 / canvas_h,
+            1.0,
+        ));
+
+    let final_mvp = glam::Mat4::from_cols_array(global_mvp) * model;
+
+    if let Some(loc) = shaders.layer.get_uniform(gl, "u_mvp") {
+        gl.uniform_matrix_4_f32_slice(Some(&loc), false, &final_mvp.to_cols_array());
     }
 
-    let expected_size = (width * height * 4) as usize;
-    if pixels.len() != expected_size {
-        eprintln!(
-            "CRITICAL: Buffer size mismatch! Expected {}, got {}",
-            expected_size,
-            pixels.len()
-        );
-        return None;
+    if let Some(loc) = shaders.layer.get_uniform(gl, "u_opacity") {
+        gl.uniform_1_f32(Some(&loc), layer.opacity());
     }
 
-    unsafe {
-        use glow::HasContext;
-        gl.pixel_store_i32(glow::UNPACK_ALIGNMENT, 1);
-
-        let tex = gl.create_texture().expect("Failed to create texture");
-
-        gl.bind_texture(glow::TEXTURE_2D, Some(tex));
-
-        gl.tex_parameter_i32(
-            glow::TEXTURE_2D,
-            glow::TEXTURE_MIN_FILTER,
-            glow::LINEAR as i32,
-        );
-        gl.tex_parameter_i32(
-            glow::TEXTURE_2D,
-            glow::TEXTURE_MAG_FILTER,
-            glow::LINEAR as i32,
-        );
-
-        // CLAMP_TO_EDGE prevents a "seam" at the edges of the canvas
-        gl.tex_parameter_i32(
-            glow::TEXTURE_2D,
-            glow::TEXTURE_WRAP_S,
-            glow::CLAMP_TO_EDGE as i32,
-        );
-        gl.tex_parameter_i32(
-            glow::TEXTURE_2D,
-            glow::TEXTURE_WRAP_T,
-            glow::CLAMP_TO_EDGE as i32,
-        );
-
-        // Upload the raw pixel data
-        gl.tex_image_2d(
-            glow::TEXTURE_2D,
-            0,
-            glow::RGBA8 as i32, // Internal format
-            width as i32,
-            height as i32,
-            0,                   // Border (must be 0)
-            glow::RGBA,          // Format of source data
-            glow::UNSIGNED_BYTE, // Type of source data
-            PixelUnpackData::Slice(Some(pixels)),
-        );
-
-        // 3. Store in cache for the next frame
-        cache.insert(layer_id, tex);
-        Some(tex)
-    }
+    gl.bind_texture(glow::TEXTURE_2D, Some(buffer.texture));
+    gl.draw_arrays(glow::TRIANGLE_STRIP, 0, 4);
 }

@@ -85,6 +85,10 @@ mod imp {
         secondary_chip: TemplateChild<BrushColorChip>,
         #[template_child]
         pub layer_tree: TemplateChild<BrushLayerTree>,
+        #[template_child]
+        pub brush_opacity: TemplateChild<gtk::Scale>,
+        #[template_child]
+        pub brush_size: TemplateChild<gtk::Scale>,
 
         // State, stored in the editor content but needs to be referenced by UI
         pub editor_state: Rc<RefCell<BrushEditorState>>,

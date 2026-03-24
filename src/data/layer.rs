@@ -24,7 +24,10 @@ use uuid::Uuid;
 use crate::data::{
     blend_modes::BlendMode,
     layer_types::{
-        fill::{FillLayerData, FillLayerParameters}, filter::{FilterData}, group::GroupData, pixel::PixelData
+        fill::{FillLayerData, FillLayerParameters},
+        filter::FilterData,
+        group::GroupData,
+        pixel::PixelData,
     },
 };
 
@@ -46,7 +49,7 @@ pub enum Layer {
 impl Layer {
     pub fn new_pixel(name: String, width: u32, height: u32) -> Self {
         let mut pixels: Vec<u8> = Vec::new();
-        pixels.resize((width * height * 4) as usize,  0u8);
+        pixels.resize((width * height * 4) as usize, 0u8);
 
         let params = NodeLayerParameters::default();
         let data = PixelData::new(pixels, "OkLab".to_owned(), width, height);
@@ -63,7 +66,10 @@ impl Layer {
 
     pub fn append(&mut self, index: usize, layer: Layer) {
         match self {
-            Layer::Group(inner) => inner.data.layers.insert(index, layer),
+            Layer::Group(inner) => {
+                inner.data.layers.insert(index, layer);
+                self.resize_group();
+            }
             _ => {}
         }
     }
@@ -76,7 +82,7 @@ impl Layer {
             Layer::Filter(inner) => Uuid::parse_str(&inner.id).unwrap(),
         }
     }
-    
+
     pub fn visible(&self) -> bool {
         match self {
             Layer::Pixel(inner) => inner.parameters.is_visible(),
@@ -85,7 +91,7 @@ impl Layer {
             Layer::Filter(inner) => inner.parameters.is_visible(),
         }
     }
-    
+
     pub fn opacity(&self) -> f32 {
         match self {
             Layer::Pixel(inner) => inner.parameters.opacity,
@@ -95,25 +101,66 @@ impl Layer {
         }
     }
 
-    // TODO: Measure group layers too maybe
     pub fn width(&self) -> u32 {
         match self {
             Layer::Pixel(inner) => inner.data.width,
-            _ => 0,
-        }
-    }
-    
-    // TODO: Measure group layers too maybe
-    pub fn height(&self) -> u32 {
-        match self {
-            Layer::Pixel(inner) => inner.data.height,
+            Layer::Group(inner) => inner.data.width,
             _ => 0,
         }
     }
 
-    pub fn pixel_data(&self) -> Option<Vec<u8>> {
+    pub fn height(&self) -> u32 {
         match self {
-            Layer::Pixel(inner) => Some(inner.data.pixels.clone()),
+            Layer::Pixel(inner) => inner.data.height,
+            Layer::Group(inner) => inner.data.height,
+            _ => 0,
+        }
+    }
+
+    pub fn x(&self) -> i32 {
+        match self {
+            Layer::Pixel(inner) => inner.data.x,
+            Layer::Group(inner) => inner.data.x,
+            _ => 0,
+        }
+    }
+
+    pub fn y(&self) -> i32 {
+        match self {
+            Layer::Pixel(inner) => inner.data.y,
+            Layer::Group(inner) => inner.data.y,
+            _ => 0,
+        }
+    }
+
+    pub fn is_dirty(&self) -> bool {
+        match self {
+            Layer::Pixel(inner) => inner.is_dirty,
+            Layer::Group(inner) => inner.is_dirty,
+            Layer::Fill(inner) => inner.is_dirty,
+            Layer::Filter(inner) => inner.is_dirty,
+        }
+    }
+
+    pub fn set_dirty(&mut self, flag: bool) {
+        match self {
+            Layer::Pixel(inner) => inner.is_dirty = flag,
+            Layer::Group(inner) => inner.is_dirty = flag,
+            Layer::Fill(inner) => inner.is_dirty = flag,
+            Layer::Filter(inner) => inner.is_dirty = flag,
+        }
+    }
+
+    pub fn pixel_data(&self) -> Option<&[u8]> {
+        match self {
+            Layer::Pixel(inner) => Some(&inner.data.pixels),
+            _ => None,
+        }
+    }
+    
+    pub fn pixel_data_mut(&mut self) -> Option<&mut [u8]> {
+        match self {
+            Layer::Pixel(inner) => Some(&mut inner.data.pixels),
             _ => None,
         }
     }
@@ -151,19 +198,18 @@ impl Layer {
                             inner.filters.remove(idx);
                         }
                     }
-                    _ => unreachable!() // Filters can't have filters
+                    _ => unreachable!(), // Filters can't have filters
                 }
             }
-            _ => {
-                match self {
-                    Layer::Group(inner) => {
-                        if let Some(idx) = inner.data.layers.iter().position(|l| l.id() == child.id()) {
-                            inner.data.layers.remove(idx);
-                        }
+            _ => match self {
+                Layer::Group(inner) => {
+                    if let Some(idx) = inner.data.layers.iter().position(|l| l.id() == child.id()) {
+                        inner.data.layers.remove(idx);
+                        self.resize_group();
                     }
-                    _ => {}
                 }
-            }
+                _ => {}
+            },
         }
     }
 
@@ -172,10 +218,10 @@ impl Layer {
             Layer::Pixel(inner) => &inner.parameters.blend_mode,
             Layer::Group(inner) => &inner.parameters.blend_mode,
             Layer::Fill(inner) => &inner.parameters.blend_mode,
-            _ => {&BlendMode::Normal}
+            _ => &BlendMode::Normal,
         }
     }
-    
+
     pub fn name(&self) -> &str {
         match self {
             Layer::Pixel(inner) => &inner.name,
@@ -204,6 +250,38 @@ impl Layer {
             _ => {}
         }
     }
+
+    pub fn resize_group(&mut self) {
+        match self {
+            Layer::Group(inner) => {
+                inner.data.calculate_group_bounds();
+            }
+            _ => {}
+        }
+    }
+
+    pub fn draw_brush_dab(&mut self, x: i32, y: i32, radius: i32, color: [u8; 4]) {
+        // Convert global canvas coordinates to layer-local coordinates
+        let local_x = x - self.x();
+        let local_y = y - self.y();
+        let (width, height) = (self.width() as i32, self.height() as i32);
+
+        for dy in -radius..radius {
+            for dx in -radius..radius {
+                if dx * dx + dy * dy <= radius * radius {
+                    let px = local_x + dx;
+                    let py = local_y + dy;
+
+                    // Bounds check: only draw if inside this specific layer's dimensions
+                    if px >= 0 && px < width && py >= 0 && py < height {
+                        let idx = ((py * width + px) * 4) as usize;
+                        self.pixel_data_mut().unwrap()[idx..idx + 4].copy_from_slice(&color);
+                    }
+                }
+            }
+        }
+        self.set_dirty(true);
+    }
 }
 
 #[allow(dead_code)]
@@ -219,6 +297,10 @@ where
     filters: Vec<Layer>,
     parameters: T,
     data: D,
+
+    // Flags
+    #[serde(skip_serializing)]
+    is_dirty: bool
 }
 
 #[allow(dead_code)]
@@ -234,6 +316,7 @@ where
             filters: Vec::new(),
             parameters,
             data,
+            is_dirty: true
         }
     }
 

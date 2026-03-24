@@ -41,6 +41,7 @@ use crate::{
         utils::{
             editor_state::BrushEditorState,
             renderer::{
+                buffer::LayerBuffer,
                 render::{render_pass, setup_gl},
                 shader_manager::ShaderManager,
             },
@@ -65,7 +66,7 @@ mod imp {
         pub file_location: RefCell<Option<String>>,
         pub editor_state: OnceCell<Rc<RefCell<BrushEditorState>>>,
         pub project: RefCell<BrushProject>,
-        pub texture_cache: RefCell<HashMap<Uuid, glow::Texture>>,
+        pub texture_cache: RefCell<HashMap<Uuid, LayerBuffer>>,
         pub layer_widgets: RefCell<HashMap<Uuid, WeakRef<BrushLayerItem>>>,
         // Gl context
         pub gl_context: OnceCell<Context>,
@@ -135,6 +136,22 @@ mod imp {
 
             klass.install_action("canvas.zoom-to-fit", None, move |content, _, _| {
                 content.zoom_to_fit();
+            });
+
+            klass.install_action("canvas.pan-up", None, move |content, _, _| {
+                content.move_by(0f32, -20f32);
+            });
+
+            klass.install_action("canvas.pan-down", None, move |content, _, _| {
+                content.move_by(0f32, 20f32);
+            });
+
+            klass.install_action("canvas.pan-right", None, move |content, _, _| {
+                content.move_by(20f32, 0f32);
+            });
+
+            klass.install_action("canvas.pan-left", None, move |content, _, _| {
+                content.move_by(-20f32, 0f32);
             });
 
             klass.install_action("canvas.rotate-right", None, move |content, _, _| {
@@ -347,6 +364,7 @@ impl BrushCanvas {
             "editor.activate-layer",
             Some(&layer.id().to_string().to_variant()),
         );
+        self.imp().canvas.queue_draw();
     }
 
     pub fn remove_layer(&self) {
@@ -408,6 +426,7 @@ impl BrushCanvas {
             texture_cache.remove(&active_layer);
             widget_cache.remove(&active_layer);
         }
+        self.imp().canvas.queue_draw();
     }
 
     pub fn move_layer_up(&self) {
@@ -507,6 +526,7 @@ impl BrushCanvas {
                 }
             }
         }
+        self.imp().canvas.queue_draw();
     }
 
     pub fn move_layer_down(&self) {
@@ -606,6 +626,7 @@ impl BrushCanvas {
                 }
             }
         }
+        self.imp().canvas.queue_draw();
     }
 
     pub fn rename_layer(&self, uuid: Uuid, new_name: String) {
@@ -799,9 +820,19 @@ impl BrushCanvas {
             move |_, _x, _y| {
                 let pos = obj.imp().position.get();
                 start_pos.set(pos);
+
+                if let Some(state) = obj.imp().editor_state.get() {
+                    let state = state.borrow();
+                    let tool = state.tool.borrow();
+
+                    match *tool {
+                        BrushTool::Move => {}  // No op
+                        BrushTool::Brush => {} // TODO: Initial draw
+                        _ => {}
+                    }
+                }
             }
         ));
-
 
         drag.connect_drag_update(clone!(
             #[weak(rename_to = obj)]
@@ -816,18 +847,21 @@ impl BrushCanvas {
                     let tool = state.tool.borrow();
 
                     match *tool {
-                        BrushTool::Move => obj.move_to(orig_x + offset_x as f32, orig_y + offset_y as f32),
+                        BrushTool::Move => {
+                            obj.move_to(orig_x + offset_x as f32, orig_y + offset_y as f32)
+                        }
                         BrushTool::Brush => {
                             if let Some(event) = gesture.last_event(None) {
                                 let pressure = event.axis(gdk::AxisUse::Pressure).unwrap_or(1.0);
-                                let x_tilt = event.axis(gdk::AxisUse::Xtilt);
-                                let y_tilt = event.axis(gdk::AxisUse::Ytilt);
-                                println!("Pressure: {:?}", pressure);
-                                println!("X tilt: {:?}", x_tilt);
-                                println!("Y tilt: {:?}", y_tilt);
+                                let _x_tilt = event.axis(gdk::AxisUse::Xtilt).unwrap_or(0.0);
+                                let _y_tilt = event.axis(gdk::AxisUse::Ytilt).unwrap_or(0.0);
+
+                                obj.draw_stroke(pressure);
                             }
-                        },
-                        _ => unimplemented!()
+                        }
+                        _ => {
+                            println!("Tool not implemented!")
+                        }
                     }
                 }
 
@@ -902,6 +936,38 @@ impl BrushCanvas {
             Some(gtk::NamedAction::new("canvas.rotate-reset")),
         ));
 
+        controller.add_shortcut(gtk::Shortcut::new(
+            Some(gtk::KeyvalTrigger::new(
+                gdk::Key::Up,
+                gdk::ModifierType::NO_MODIFIER_MASK,
+            )),
+            Some(gtk::NamedAction::new("canvas.pan-up")),
+        ));
+
+        controller.add_shortcut(gtk::Shortcut::new(
+            Some(gtk::KeyvalTrigger::new(
+                gdk::Key::Down,
+                gdk::ModifierType::NO_MODIFIER_MASK,
+            )),
+            Some(gtk::NamedAction::new("canvas.pan-down")),
+        ));
+
+        controller.add_shortcut(gtk::Shortcut::new(
+            Some(gtk::KeyvalTrigger::new(
+                gdk::Key::Right,
+                gdk::ModifierType::NO_MODIFIER_MASK,
+            )),
+            Some(gtk::NamedAction::new("canvas.pan-right")),
+        ));
+
+        controller.add_shortcut(gtk::Shortcut::new(
+            Some(gtk::KeyvalTrigger::new(
+                gdk::Key::Left,
+                gdk::ModifierType::NO_MODIFIER_MASK,
+            )),
+            Some(gtk::NamedAction::new("canvas.pan-left")),
+        ));
+
         self.add_controller(controller);
     }
 
@@ -942,27 +1008,57 @@ impl BrushCanvas {
         self.add_controller(scroll);
     }
 
-    pub fn screen_to_canvas(&self, screen_x: f32, screen_y: f32) -> (f32, f32) {
+    pub fn screen_to_canvas(
+        &self,
+        project: &BrushProject,
+        screen_x: f64,
+        screen_y: f64,
+    ) -> (f64, f64) {
         let imp = self.imp();
-        let (win_w, win_h) = (self.width() as f32, self.height() as f32);
-        let project = imp.project.borrow();
 
-        let zoom = imp.zoom.get();
+        let (win_w, win_h) = (self.width() as f64, self.height() as f64);
+
+        let zoom = imp.zoom.get() as f64;
         let (pos_x, pos_y) = imp.position.get();
-        let (canv_w, canv_h) = (project.width as f32, project.height as f32);
+        let (canv_w, canv_h) = (project.width as f64, project.height as f64);
 
         // 1. Relative to screen center
         let mut x = screen_x - (win_w / 2.0);
         let mut y = screen_y - (win_h / 2.0);
 
         // 2. Undo the position and zoom
-        x = (x - pos_x) / zoom;
-        y = (y - pos_y) / zoom;
+        x = (x - pos_x as f64) / zoom;
+        y = (y - pos_y as f64) / zoom;
 
         // 3. Undo the Top-Left origin shift
         x += canv_w / 2.0;
         y += canv_h / 2.0;
 
         (x, y)
+    }
+
+    fn draw_stroke(&self, pressure: f64) {
+        let mut project = self.imp().project.borrow_mut();
+        let state = self.imp().editor_state.get().unwrap().borrow();
+        let color = state.primary_color.borrow();
+        let color_int = color.to_rgba8().to_u8_array();
+
+        let (x, y) = self.imp().mouse_pos.get();
+        let (new_x, new_y) = self.screen_to_canvas(&project, x as f64, y as f64);
+
+        println!("Old X: {}, Old Y: {}", x, y);
+        println!("X: {}, Y: {}", new_x, new_y);
+
+        if let Some(active_id) = self.imp().active_layer.get() {
+            if let Some(layer) = project.find_layer_mut(active_id) {
+                // TODO: Brush engine
+                let base_size = 10;
+                let dynamic_size = (base_size as f64 * pressure) as i32;
+
+                layer.draw_brush_dab(new_x as i32, new_y as i32, dynamic_size, color_int);
+
+                self.imp().canvas.queue_render();
+            }
+        }
     }
 }

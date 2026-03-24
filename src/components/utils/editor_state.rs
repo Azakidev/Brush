@@ -31,6 +31,9 @@ pub struct BrushEditorState {
     // Colors
     pub primary_color: RefCell<OpaqueColor<Oklab>>,
     pub secondary_color: RefCell<OpaqueColor<Oklab>>,
+    // Brush
+    pub brush_opacity: RefCell<f32>,
+    pub brush_size: RefCell<u32>
 }
 
 impl Default for BrushEditorState {
@@ -40,6 +43,9 @@ impl Default for BrushEditorState {
 
             primary_color: RefCell::new(OpaqueColor::BLACK),
             secondary_color: RefCell::new(OpaqueColor::WHITE),
+
+            brush_opacity: RefCell::new(1f32),
+            brush_size: RefCell::new(64),
         }
     }
 }

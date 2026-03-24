@@ -32,10 +32,8 @@ pub fn save_project(_path: &Path, project: &BrushProject) {
     if let Ok(_structure) = serde_json::to_string(project) {
         todo!();
     }
-    // Generate a preview
-    todo!();
-    // Commit the file
-    todo!();
+    // TODO Generate a preview
+    // TODO Commit the file
 }
 
 #[allow(dead_code)]
@@ -61,6 +59,6 @@ fn save_layers(layers: &Vec<Layer>) {
 }
 
 #[allow(dead_code)]
-fn save_pixel_data(_id: Uuid, _pixels: Vec<u8>) {
+fn save_pixel_data(_id: Uuid, _pixels: &[u8]) {
     todo!();
 }

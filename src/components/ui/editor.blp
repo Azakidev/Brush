@@ -113,6 +113,22 @@ template $BrushEditor: Box {
                   "title-2",
                 ]
               }
+
+              Box {
+                orientation: vertical;
+
+                Gtk.Scale brush_opacity {
+                  orientation: horizontal;
+                  width-request: 150;
+                  hexpand: true;
+                }
+
+                Gtk.Scale brush_size {
+                  orientation: horizontal;
+                  width-request: 150;
+                  hexpand: true;
+                }
+              }
             }
           };
 

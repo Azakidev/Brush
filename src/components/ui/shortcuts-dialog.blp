@@ -58,4 +58,18 @@ Adw.ShortcutsDialog shortcuts_dialog {
       accelerator: "A";
     }
   }
+
+  Adw.ShortcutsSection {
+    title: _("Layer operations");
+
+    Adw.ShortcutsItem {
+      title: C_("shortcut window", "Move layer up");
+      accelerator: "<Alt>Up";
+    }
+
+    Adw.ShortcutsItem {
+      title: C_("shortcut window", "Move layer down");
+      accelerator: "<Alt>Down";
+    }
+  }
 }

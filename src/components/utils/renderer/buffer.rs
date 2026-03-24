@@ -20,30 +20,69 @@
 
 use glow::HasContext;
 
+#[derive(Debug, Clone, Copy)]
 pub struct LayerBuffer {
     pub texture: glow::Texture,
     pub framebuffer: glow::Framebuffer,
-    pub width: i32,
-    pub height: i32,
+    pub width: u32,
+    pub height: u32,
     pub offset_x: i32,
     pub offset_y: i32,
 }
 
 impl LayerBuffer {
-    pub unsafe fn new(gl: &glow::Context, width: i32, height: i32) -> Self {
+    pub unsafe fn new(
+        gl: &glow::Context,
+        x: i32,
+        y: i32,
+        width: u32,
+        height: u32,
+        data: Option<&[u8]>,
+    ) -> Self {
         let texture = gl.create_texture().unwrap();
         gl.bind_texture(glow::TEXTURE_2D, Some(texture));
+
+        // Set scaling filters so it doesn't look blurry when zooming
+        gl.tex_parameter_i32(
+            glow::TEXTURE_2D,
+            glow::TEXTURE_MIN_FILTER,
+            glow::LINEAR as i32,
+        );
+        gl.tex_parameter_i32(
+            glow::TEXTURE_2D,
+            glow::TEXTURE_MAG_FILTER,
+            glow::NEAREST as i32,
+        );
+
         gl.tex_image_2d(
-            glow::TEXTURE_2D, 0, glow::RGBA as i32, width, height,
-            0, glow::RGBA, glow::UNSIGNED_BYTE, glow::PixelUnpackData::Slice(None),
+            glow::TEXTURE_2D,
+            0,
+            glow::RGBA as i32,
+            width as i32,
+            height as i32,
+            0,
+            glow::RGBA,
+            glow::UNSIGNED_BYTE,
+            glow::PixelUnpackData::Slice(data),
         );
 
         let framebuffer = gl.create_framebuffer().unwrap();
         gl.bind_framebuffer(glow::FRAMEBUFFER, Some(framebuffer));
         gl.framebuffer_texture_2d(
-            glow::FRAMEBUFFER, glow::COLOR_ATTACHMENT0, glow::TEXTURE_2D, Some(texture), 0
+            glow::FRAMEBUFFER,
+            glow::COLOR_ATTACHMENT0,
+            glow::TEXTURE_2D,
+            Some(texture),
+            0,
         );
 
-        Self { texture, framebuffer, width, height, offset_x: 0, offset_y: 0 }
+        Self {
+            texture,
+            framebuffer,
+            width,
+            height,
+            offset_x: x,
+            offset_y: y,
+        }
     }
 }
