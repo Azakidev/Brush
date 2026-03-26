@@ -53,9 +53,13 @@ impl GroupData {
         let mut max_x = i32::MIN;
         let mut max_y = i32::MIN;
 
-        for child in &self.layers {
+        for child in &mut self.layers {
             if !child.visible() {
                 continue;
+            }
+
+            if child.children().is_some() { // Calculate children
+                child.resize_group();
             }
 
             // Note: If child is a group, this needs to be called recursively

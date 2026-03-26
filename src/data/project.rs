@@ -23,12 +23,13 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
+use glow::NativeFramebuffer;
 use gtk::glib::WeakRef;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::{
-    components::layer_item::BrushLayerItem,
+    components::{layer_item::BrushLayerItem, utils::renderer::buffer::LayerBuffer},
     data::{layer::Layer, layer_types::refs::RefLayer},
 };
 
@@ -120,13 +121,16 @@ impl BrushProject {
         old_parent: Option<Uuid>,
         new_parent: Option<Uuid>,
         widget_cache: &mut HashMap<Uuid, WeakRef<BrushLayerItem>>,
+        buf_cache: &mut HashMap<Uuid, LayerBuffer>,
     ) {
         // Remove old
         if let Some(parent_id) = old_parent {
             if let Some(parent) = self.find_layer_mut(parent_id) {
                 if let Some(children) = parent.children() {
                     if children.iter().any(|l| l.id() == layer.id()) {
-                        parent.remove_child(layer);
+                        parent.remove_child(layer); // Force clear group texture
+                        buf_cache.remove(&parent.id());
+                        buf_cache.remove(&layer.id());
                         widget_cache.remove(&parent.id());
                         widget_cache.remove(&layer.id());
                     }
@@ -136,6 +140,7 @@ impl BrushProject {
             if let Some(idx) = self.layers.iter().position(|l| l.id() == layer.id()) {
                 self.layers.remove(idx);
                 widget_cache.remove(&layer.id());
+                buf_cache.remove(&layer.id());
             }
         }
         // Add on new position

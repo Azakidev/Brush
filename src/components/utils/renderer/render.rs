@@ -18,10 +18,10 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-use std::collections::HashMap;
+use std::{collections::HashMap, num::NonZero};
 
 use adw::subclass::prelude::ObjectSubclassIsExt;
-use glow::{HasContext, NativeVertexArray};
+use glow::{HasContext, NativeFramebuffer, NativeVertexArray};
 use gtk::{glib, prelude::WidgetExt};
 use uuid::Uuid;
 
@@ -30,7 +30,7 @@ use crate::{
         canvas::BrushCanvas,
         utils::renderer::{buffer::LayerBuffer, shader_manager::ShaderManager},
     },
-    data::layer::Layer,
+    data::{layer::Layer, project::BrushProject},
 };
 
 pub fn setup_gl(gl: &glow::Context) -> Option<(ShaderManager, NativeVertexArray)> {
@@ -83,77 +83,76 @@ pub fn render_pass(canvas: &BrushCanvas, area: &gtk::GLArea) -> glib::Propagatio
     };
 
     let mut shaders = shaders.borrow_mut();
-    let mut cache = imp.texture_cache.borrow_mut();
+    let mut cache = imp.buffer_cache.borrow_mut();
 
     // Viewport parameters
     let (win_w, win_h) = (area.width() as f32, area.height() as f32);
-    let (canvas_w, canvas_h) = (project.width as f32, project.height as f32);
+    let (pw, ph) = (project.width as i32, project.height as i32);
     let zoom = imp.zoom.get();
-    let (pos_x, pos_y) = imp.position.get();
-    let rotation = imp.rotation.get();
 
     unsafe {
         use glow::HasContext;
 
-        // Clear
-        gl.viewport(0, 0, win_w as i32, win_h as i32);
-
-        gl.clear_color(0.1, 0.1, 0.1, 1.0); // Dark background
-        gl.clear(glow::COLOR_BUFFER_BIT);
-
-        // Projection matrix
-        let projection = glam::Mat4::orthographic_lh(0.0, win_w, win_h, 0.0, -1.0, 1.0);
-
-        // Transformation Stack:
-        // a) Start at screen center + user offset
-        // b) Rotate the whole view
-        // c) Apply Zoom
-        // d) Move so the Quad's Top-Left is the local origin
-        // e) Scale to the actual pixel size of the canvas
-        let transform =
-            glam::Mat4::from_translation(glam::vec3(win_w / 2.0 + pos_x, win_h / 2.0 + pos_y, 0.0))
-                * glam::Mat4::from_rotation_z(rotation)
-                * glam::Mat4::from_scale(glam::vec3(zoom, zoom, 1.0))
-                * glam::Mat4::from_translation(glam::vec3(-canvas_w / 2.0, -canvas_h / 2.0, 0.0))
-                * glam::Mat4::from_scale(glam::vec3(canvas_w, canvas_h, 1.0));
-
-        let mvp = projection * transform;
-
-        // Background
-        shaders.background.bind(gl);
-        if let Some(loc) = shaders.background.get_uniform(gl, "u_mvp") {
-            gl.uniform_matrix_4_f32_slice(Some(&loc), false, &mvp.to_cols_array());
-        }
-        if let Some(loc) = shaders.background.get_uniform(gl, "u_canvas_size") {
-            gl.uniform_2_f32(Some(&loc), project.width as f32, project.height as f32);
-        }
-        if let Some(loc) = shaders.background.get_uniform(gl, "u_zoom") {
-            gl.uniform_1_f32(Some(&loc), zoom);
-        }
+        // Save default FBO
+        let default_fbo_id = gl.get_parameter_i32(glow::FRAMEBUFFER_BINDING) as u32;
+        let default_fbo = NativeFramebuffer {
+            0: NonZero::new(default_fbo_id).expect("default_fbo shouldn't be 0"),
+        };
 
         gl.bind_vertex_array(Some(*vao));
-        gl.draw_arrays(glow::TRIANGLE_STRIP, 0, 4);
 
-        // Layers
+        // Create root FBO and clear it
+        let root_fbo = LayerBuffer::new(gl, 0, 0, project.width, project.height, None);
+
+        gl.bind_framebuffer(glow::FRAMEBUFFER, Some(root_fbo.framebuffer));
+        gl.viewport(0, 0, pw, ph);
+
+        gl.clear_color(0.0, 0.0, 0.0, 0.0);
+        gl.clear(glow::COLOR_BUFFER_BIT);
+
+        // Render layers to FBO
         gl.enable(glow::BLEND);
         gl.blend_func(glow::SRC_ALPHA, glow::ONE_MINUS_SRC_ALPHA);
+
+        let root_mvp = glam::Mat4::orthographic_lh(0.0, pw as f32, ph as f32, 0.0, -1.0, 1.0);
 
         render_layer_tree(
             &mut cache,
             gl,
             &mut project.layers,
             &mut shaders,
-            &mvp.to_cols_array(),
-            win_w as i32,
-            win_h as i32,
-            canvas_w as f32,
-            canvas_h as f32,
+            &root_mvp,
+            root_fbo.framebuffer,
+            pw as i32,
+            ph as i32,
         );
+
+        // Composite to camera
+        gl.bind_framebuffer(glow::FRAMEBUFFER, Some(default_fbo));
+        gl.viewport(0, 0, win_w as i32, win_h as i32);
+
+        gl.clear_color(0.1, 0.1, 0.1, 1.0); // Dark background
+        gl.clear(glow::COLOR_BUFFER_BIT);
+        gl.disable(glow::SCISSOR_TEST);
+        gl.disable(glow::DEPTH_TEST);
+
+        let camera_mvp = calculate_global_mvp(canvas, area, &project);
+
+        // Background
+        draw_checkerboard(
+            gl,
+            &mut shaders,
+            project.width as f32,
+            project.height as f32,
+            zoom,
+            &camera_mvp,
+        );
+
+        composite_root_buffer(gl, &root_fbo, &mut shaders, &camera_mvp);
 
         // Clean up state
         gl.disable(glow::BLEND);
         gl.bind_vertex_array(None);
-        gl.use_program(None);
 
         gl.flush();
     }
@@ -166,11 +165,10 @@ unsafe fn render_layer_tree(
     gl: &glow::Context,
     layers: &mut [Layer],
     shaders: &mut ShaderManager,
-    mvp: &[f32; 16],
-    win_w: i32,
-    win_h: i32,
-    canvas_w: f32,
-    canvas_h: f32,
+    parent_mvp: &glam::Mat4,
+    parent_fbo: NativeFramebuffer,
+    parent_w: i32,
+    parent_h: i32,
 ) {
     let tree: Vec<&mut Layer> = layers.iter_mut().rev().collect();
     for layer in tree {
@@ -181,6 +179,7 @@ unsafe fn render_layer_tree(
         match layer {
             Layer::Pixel(_) => {
                 let buffer = get_or_create_buffer(cache, gl, &layer);
+
                 if layer.is_dirty() {
                     gl.bind_texture(glow::TEXTURE_2D, Some(buffer.texture));
 
@@ -199,20 +198,32 @@ unsafe fn render_layer_tree(
                     }
                     layer.set_dirty(false); // Reset the flag
                 }
-                composite_buffer(gl, &buffer, &layer, shaders, mvp, canvas_w, canvas_h);
+
+                composite_buffer(gl, &buffer, &layer, shaders, parent_mvp);
+
+                // gl.bind_framebuffer(glow::FRAMEBUFFER, parent_fbo);
             }
             Layer::Group(_) => {
-                let (gx, gy) = (layer.x(), layer.y());
                 let (gw, gh) = (layer.width() as i32, layer.height() as i32);
+                let (gx, gy) = (layer.x() as f32, layer.y() as f32);
+
+                if gw <= 0 || gh <= 0 {
+                    continue;
+                } // Skip empty groups
+
                 let group_buffer = get_or_create_buffer(cache, gl, layer);
 
                 gl.bind_framebuffer(glow::FRAMEBUFFER, Some(group_buffer.framebuffer));
                 gl.viewport(0, 0, gw, gh);
-                gl.clear_color(0.0, 0.0, 0.0, 0.0);
-                gl.clear(glow::COLOR_BUFFER_BIT);
+                // gl.clear_color(0.0, 0.0, 0.0, 0.0); // Transparent background!
+                // gl.clear(glow::COLOR_BUFFER_BIT);
 
-                let local_mvp =
-                    glam::Mat4::from_translation(glam::vec3(-gx as f32, -gy as f32, 0.0));
+                let group_proj =
+                    glam::Mat4::orthographic_lh(0.0, gw as f32, gh as f32, 0.0, -1.0, 1.0);
+
+                // Shift children so (gx, gy) becomes (0,0) inside the FBO
+                let group_view = glam::Mat4::from_translation(glam::vec3(gx, gy, 0.0));
+                let group_mvp = group_proj * group_view;
 
                 if let Some(children) = layer.children_mut() {
                     render_layer_tree(
@@ -220,21 +231,19 @@ unsafe fn render_layer_tree(
                         gl,
                         children,
                         shaders,
-                        &local_mvp.to_cols_array(),
-                        win_w,
-                        win_h,
-                        canvas_w,
-                        canvas_h
+                        &group_mvp,
+                        group_buffer.framebuffer,
+                        gw,
+                        gh,
                     );
-                } else {
-                    continue; // Don't continue with this layer if somehow a group fails to get
-                              // its children, should be unreachable but you're never sure
                 }
 
-                gl.bind_framebuffer(glow::FRAMEBUFFER, None);
-                gl.viewport(0, 0, win_w as i32, win_h as i32);
+                // debug_buffer_contents(gl, layer);
 
-                composite_buffer(gl, &group_buffer, layer, shaders, mvp, canvas_w, canvas_h);
+                gl.bind_framebuffer(glow::FRAMEBUFFER, Some(parent_fbo));
+                gl.viewport(0, 0, parent_w, parent_h);
+
+                composite_buffer(gl, &group_buffer, layer, shaders, parent_mvp);
             }
             Layer::Fill(_) => {
                 todo!()
@@ -249,14 +258,18 @@ pub fn get_or_create_buffer(
     gl: &glow::Context,
     layer: &Layer,
 ) -> LayerBuffer {
-    // If dimensions changed, we must reallocate to avoid stretching
     let needs_realloc = cache
         .get(&layer.id())
         .map(|b| b.width != layer.width() || b.height != layer.height())
         .unwrap_or(false);
 
     if needs_realloc {
-        cache.remove(&layer.id());
+        if let Some(old_buf) = cache.remove(&layer.id()) {
+            unsafe {
+                gl.delete_framebuffer(old_buf.framebuffer);
+                gl.delete_texture(old_buf.texture);
+            }
+        }
     }
 
     let buffer = cache.entry(layer.id()).or_insert_with(|| unsafe {
@@ -278,20 +291,17 @@ pub unsafe fn composite_buffer(
     buffer: &LayerBuffer,
     layer: &Layer,
     shaders: &mut ShaderManager,
-    global_mvp: &[f32; 16],
-    canvas_w: f32,
-    canvas_h: f32,
+    active_mvp: &glam::Mat4,
 ) {
     shaders.layer.bind(gl);
 
-    let model = glam::Mat4::from_translation(glam::vec3(layer.x() as f32, layer.y() as f32, 0.0))
-        * glam::Mat4::from_scale(glam::vec3(
-            layer.width() as f32 / canvas_w,
-            layer.height() as f32 / canvas_h,
-            1.0,
-        ));
+    let (x, y) = (layer.x() as f32, layer.y() as f32);
+    let (w, h) = (buffer.width as f32, buffer.height as f32);
 
-    let final_mvp = glam::Mat4::from_cols_array(global_mvp) * model;
+    let model = glam::Mat4::from_translation(glam::vec3(x, y, 0.0))
+        * glam::Mat4::from_scale(glam::vec3(w, h, 1.0));
+
+    let final_mvp = *active_mvp * model;
 
     if let Some(loc) = shaders.layer.get_uniform(gl, "u_mvp") {
         gl.uniform_matrix_4_f32_slice(Some(&loc), false, &final_mvp.to_cols_array());
@@ -300,7 +310,142 @@ pub unsafe fn composite_buffer(
     if let Some(loc) = shaders.layer.get_uniform(gl, "u_opacity") {
         gl.uniform_1_f32(Some(&loc), layer.opacity());
     }
+    if let Some(loc) = shaders.layer.get_uniform(gl, "u_flip_y") {
+        gl.uniform_1_f32(Some(&loc), 1.0); // Static textures usually don't need flipping
+    }
+
+    gl.enable(glow::BLEND);
+    gl.blend_func(glow::SRC_ALPHA, glow::ONE_MINUS_SRC_ALPHA);
+    gl.blend_equation(glow::FUNC_ADD);
 
     gl.bind_texture(glow::TEXTURE_2D, Some(buffer.texture));
     gl.draw_arrays(glow::TRIANGLE_STRIP, 0, 4);
+}
+
+pub unsafe fn composite_root_buffer(
+    gl: &glow::Context,
+    buffer: &LayerBuffer,
+    shaders: &mut ShaderManager,
+    active_mvp: &glam::Mat4,
+) {
+    shaders.layer.bind(gl);
+
+    let (w, h) = (buffer.width as f32, buffer.height as f32);
+
+    let model = glam::Mat4::from_translation(glam::vec3(0.0, 0.0, 0.0))
+        * glam::Mat4::from_scale(glam::vec3(w, h, 1.0));
+
+    let final_mvp = *active_mvp * model;
+
+    if let Some(loc) = shaders.layer.get_uniform(gl, "u_mvp") {
+        gl.uniform_matrix_4_f32_slice(Some(&loc), false, &final_mvp.to_cols_array());
+    }
+
+    if let Some(loc) = shaders.layer.get_uniform(gl, "u_opacity") {
+        gl.uniform_1_f32(Some(&loc), 1.0);
+    }
+    if let Some(loc) = shaders.layer.get_uniform(gl, "u_flip_y") {
+        gl.uniform_1_f32(Some(&loc), 0.0); // Static textures usually don't need flipping
+    }
+
+    gl.enable(glow::BLEND);
+    gl.blend_func(glow::SRC_ALPHA, glow::ONE_MINUS_SRC_ALPHA);
+    gl.blend_equation(glow::FUNC_ADD);
+
+    gl.bind_texture(glow::TEXTURE_2D, Some(buffer.texture));
+    gl.draw_arrays(glow::TRIANGLE_STRIP, 0, 4);
+}
+
+fn calculate_global_mvp(
+    canvas: &BrushCanvas,
+    area: &gtk::GLArea,
+    project: &BrushProject,
+) -> glam::Mat4 {
+    let imp = canvas.imp();
+
+    let (win_w, win_h) = (area.width() as f32, area.height() as f32);
+    let (canvas_w, canvas_h) = (project.width as f32, project.height as f32);
+
+    let (pos_x, pos_y) = imp.position.get();
+    let zoom = imp.zoom.get();
+    let rotation = imp.rotation.get();
+
+    let projection = glam::Mat4::orthographic_lh(0.0, win_w, win_h, 0.0, -1.0, 1.0);
+
+    let view =
+        glam::Mat4::from_translation(glam::vec3(win_w / 2.0 + pos_x, win_h / 2.0 + pos_y, 0.0))
+            * glam::Mat4::from_rotation_z(rotation)
+            * glam::Mat4::from_scale(glam::vec3(zoom, zoom, 1.0))
+            * glam::Mat4::from_translation(glam::vec3(-canvas_w / 2.0, -canvas_h / 2.0, 0.0));
+
+    projection * view
+}
+
+pub unsafe fn draw_checkerboard(
+    gl: &glow::Context,
+    shaders: &mut ShaderManager,
+    canvas_w: f32,
+    canvas_h: f32,
+    zoom: f32,
+    mvp: &glam::Mat4,
+) {
+    shaders.background.bind(gl);
+
+    let model = glam::Mat4::from_scale(glam::vec3(canvas_w, canvas_h, 1.0));
+
+    let final_mvp = *mvp * model;
+
+    if let Some(loc) = shaders.background.get_uniform(gl, "u_mvp") {
+        gl.uniform_matrix_4_f32_slice(Some(&loc), false, &final_mvp.to_cols_array());
+    }
+    if let Some(loc) = shaders.background.get_uniform(gl, "u_canvas_size") {
+        gl.uniform_2_f32(Some(&loc), canvas_w as f32, canvas_h as f32);
+    }
+    if let Some(loc) = shaders.background.get_uniform(gl, "u_zoom") {
+        gl.uniform_1_f32(Some(&loc), zoom);
+    }
+    if let Some(loc) = shaders.layer.get_uniform(gl, "u_flip_y") {
+        gl.uniform_1_f32(Some(&loc), 0.0); // Static textures usually don't need flipping
+    }
+
+    gl.draw_arrays(glow::TRIANGLE_STRIP, 0, 4);
+}
+
+#[allow(dead_code)]
+fn debug_matrix(label: &str, m: &glam::Mat4) {
+    let cols = m.to_cols_array_2d();
+    println!("--- {} ---", label);
+    for row in 0..4 {
+        println!(
+            "[{:7.2}, {:7.2}, {:7.2}, {:7.2}]",
+            cols[0][row], cols[1][row], cols[2][row], cols[3][row]
+        );
+    }
+}
+
+#[allow(dead_code)]
+unsafe fn debug_buffer_contents(gl: &glow::Context, layer: &Layer) {
+    let (w, h) = (layer.width(), layer.height());
+    let mut pixels = vec![0u8; (w * h * 4) as usize];
+
+    gl.read_pixels(
+        0,
+        0,
+        w as i32,
+        h as i32,
+        glow::RGBA,
+        glow::UNSIGNED_BYTE,
+        glow::PixelPackData::Slice(Some(&mut pixels)),
+    );
+
+    let has_data = pixels.iter().any(|&x| x > 0);
+    let sum: u64 = pixels.iter().map(|&x| x as u64).sum();
+
+    println!("--- FBO Diagnostic for Group {} ---", layer.id());
+    println!("Dimensions: {}x{}", w, h);
+    println!("Has non-zero pixels: {}", has_data);
+    println!(
+        "Byte Sum: {} (If 0, the texture is totally empty/transparent)",
+        sum
+    );
 }

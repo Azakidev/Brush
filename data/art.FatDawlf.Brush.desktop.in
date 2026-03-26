@@ -1,10 +1,11 @@
 [Desktop Entry]
-Name=brush
+Name=Brush
 Exec=brush
 Icon=art.FatDawlf.Brush
 Terminal=false
 Type=Application
-Categories=Utility;
-Keywords=GTK;
+Categories=Gtk;Graphics;2DGraphics;
+MimeType=application/x-brush;
 StartupNotify=true
+StartupWMClass=brush
 DBusActivatable=true

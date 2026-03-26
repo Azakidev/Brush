@@ -8,8 +8,9 @@ template $BrushCanvas: Adw.Bin {
   GLArea canvas {
     vexpand: true;
     hexpand: true;
-    has-depth-buffer: false;
     width-request: 400;
     height-request: 400;
+    has-depth-buffer: false;
+    allowed-apis: gles;
   }
 }

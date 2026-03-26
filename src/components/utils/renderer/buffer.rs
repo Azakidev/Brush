@@ -68,6 +68,7 @@ impl LayerBuffer {
 
         let framebuffer = gl.create_framebuffer().unwrap();
         gl.bind_framebuffer(glow::FRAMEBUFFER, Some(framebuffer));
+
         gl.framebuffer_texture_2d(
             glow::FRAMEBUFFER,
             glow::COLOR_ATTACHMENT0,
@@ -75,6 +76,18 @@ impl LayerBuffer {
             Some(texture),
             0,
         );
+
+        if data.is_none() {
+            gl.clear_color(0.0, 0.0, 0.0, 0.0);
+            gl.clear(glow::COLOR_BUFFER_BIT);
+        }
+
+        let status = gl.check_framebuffer_status(glow::FRAMEBUFFER);
+        if status != glow::FRAMEBUFFER_COMPLETE {
+            eprintln!("Framebuffer is incomplete: {:#x}", status);
+        }
+
+        gl.bind_framebuffer(glow::FRAMEBUFFER, None);
 
         Self {
             texture,

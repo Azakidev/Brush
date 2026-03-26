@@ -275,7 +275,9 @@ impl Layer {
                     // Bounds check: only draw if inside this specific layer's dimensions
                     if px >= 0 && px < width && py >= 0 && py < height {
                         let idx = ((py * width + px) * 4) as usize;
-                        self.pixel_data_mut().unwrap()[idx..idx + 4].copy_from_slice(&color);
+                        if let Some(data) = self.pixel_data_mut() {
+                            data[idx..idx + 4].copy_from_slice(&color);
+                        }
                     }
                 }
             }

@@ -66,7 +66,7 @@ mod imp {
         pub file_location: RefCell<Option<String>>,
         pub editor_state: OnceCell<Rc<RefCell<BrushEditorState>>>,
         pub project: RefCell<BrushProject>,
-        pub texture_cache: RefCell<HashMap<Uuid, LayerBuffer>>,
+        pub buffer_cache: RefCell<HashMap<Uuid, LayerBuffer>>,
         pub layer_widgets: RefCell<HashMap<Uuid, WeakRef<BrushLayerItem>>>,
         // Gl context
         pub gl_context: OnceCell<Context>,
@@ -227,11 +227,17 @@ mod imp {
                             })
                         };
 
-                        let _ = obj.obj().imp().gl_context.set(gl);
-                        let _ = obj.obj().imp().gl_lib.set(gl_lib);
+                        let obj = obj.obj();
+                        let imp = obj.imp();
 
-                        unsafe {
-                            obj.obj().setup_program();
+                        let _ = imp.gl_context.set(gl);
+                        let _ = imp.gl_lib.set(gl_lib);
+
+                        let gl = imp.gl_context.get().unwrap();
+
+                        if let Some((shader_manager, vao)) = setup_gl(gl) {
+                            let _ = imp.gl_shader_manager.set(RefCell::new(shader_manager));
+                            let _ = imp.gl_vao.set(vao);
                         }
                     }
                 ));
@@ -243,7 +249,7 @@ mod imp {
                         return glib::Propagation::Proceed;
                     };
 
-                    obj.obj().do_render(area)
+                    render_pass(&obj.obj(), area)
                 });
             }
         }
@@ -287,23 +293,6 @@ impl BrushCanvas {
 
     pub fn rotation(&self) -> f32 {
         self.imp().rotation.get()
-    }
-
-    // GL stuff
-    unsafe fn setup_program(&self) {
-        let gl = self.imp().gl_context.get().unwrap();
-
-        if let Some((shader_manager, vao)) = setup_gl(gl) {
-            let _ = self
-                .imp()
-                .gl_shader_manager
-                .set(RefCell::new(shader_manager));
-            let _ = self.imp().gl_vao.set(vao);
-        }
-    }
-
-    fn do_render(&self, area: &gtk::GLArea) -> glib::Propagation {
-        render_pass(&self, area)
     }
 
     // Layer management
@@ -371,7 +360,7 @@ impl BrushCanvas {
         let imp = self.imp();
         let mut project = imp.project.borrow_mut();
         let mut widget_cache = imp.layer_widgets.borrow_mut();
-        let mut texture_cache = imp.texture_cache.borrow_mut();
+        let mut buffer_cache = imp.buffer_cache.borrow_mut();
 
         if let Some(active_layer) = imp.active_layer.get() {
             // If the active layer's parent...
@@ -423,7 +412,7 @@ impl BrushCanvas {
             }
 
             project.remove_layer(active_layer);
-            texture_cache.remove(&active_layer);
+            buffer_cache.remove(&active_layer);
             widget_cache.remove(&active_layer);
         }
         self.imp().canvas.queue_draw();
@@ -432,6 +421,7 @@ impl BrushCanvas {
     pub fn move_layer_up(&self) {
         let mut project = self.imp().project.borrow_mut();
         let mut widget_cache = self.imp().layer_widgets.borrow_mut();
+        let mut buf_cache = self.imp().buffer_cache.borrow_mut();
 
         if let Some(active) = self.imp().active_layer.get() {
             if let Some(layer) = project.clone().find_layer(active) {
@@ -454,6 +444,7 @@ impl BrushCanvas {
                                         Some(parent.id()),
                                         Some(previous.id()),
                                         &mut widget_cache,
+                                        &mut buf_cache,
                                     )
                                 } else {
                                     project.move_layer(
@@ -462,6 +453,7 @@ impl BrushCanvas {
                                         Some(parent.id()),
                                         Some(parent.id()),
                                         &mut widget_cache,
+                                        &mut buf_cache,
                                     );
                                 }
                             }
@@ -481,6 +473,7 @@ impl BrushCanvas {
                                         Some(parent.id()),
                                         Some(grandparent.id()),
                                         &mut widget_cache,
+                                        &mut buf_cache,
                                     );
                                 }
                             } else {
@@ -497,6 +490,7 @@ impl BrushCanvas {
                                     Some(parent.id()),
                                     None,
                                     &mut widget_cache,
+                                    &mut buf_cache,
                                 )
                             }
                         }
@@ -517,9 +511,17 @@ impl BrushCanvas {
                                     None,
                                     Some(previous.id()),
                                     &mut widget_cache,
+                                    &mut buf_cache,
                                 )
                             } else {
-                                project.move_layer(layer, idx - 1, None, None, &mut widget_cache);
+                                project.move_layer(
+                                    layer,
+                                    idx - 1,
+                                    None,
+                                    None,
+                                    &mut widget_cache,
+                                    &mut buf_cache,
+                                );
                             }
                         }
                     }
@@ -532,6 +534,7 @@ impl BrushCanvas {
     pub fn move_layer_down(&self) {
         let mut project = self.imp().project.borrow_mut();
         let mut widget_cache = self.imp().layer_widgets.borrow_mut();
+        let mut buf_cache = self.imp().buffer_cache.borrow_mut();
 
         if let Some(active) = self.imp().active_layer.get() {
             if let Some(layer) = project.clone().find_layer(active) {
@@ -554,6 +557,7 @@ impl BrushCanvas {
                                         Some(parent.id()),
                                         Some(next.id()),
                                         &mut widget_cache,
+                                        &mut buf_cache,
                                     )
                                 } else {
                                     project.move_layer(
@@ -562,6 +566,7 @@ impl BrushCanvas {
                                         Some(parent.id()),
                                         Some(parent.id()),
                                         &mut widget_cache,
+                                        &mut buf_cache,
                                     );
                                 }
                             }
@@ -581,6 +586,7 @@ impl BrushCanvas {
                                         Some(parent.id()),
                                         Some(grandparent.id()),
                                         &mut widget_cache,
+                                        &mut buf_cache,
                                     );
                                 }
                             } else {
@@ -597,6 +603,7 @@ impl BrushCanvas {
                                     Some(parent.id()),
                                     None,
                                     &mut widget_cache,
+                                    &mut buf_cache,
                                 )
                             }
                         }
@@ -617,9 +624,17 @@ impl BrushCanvas {
                                     None,
                                     Some(next.id()),
                                     &mut widget_cache,
+                                    &mut buf_cache,
                                 )
                             } else {
-                                project.move_layer(layer, idx + 1, None, None, &mut widget_cache);
+                                project.move_layer(
+                                    layer,
+                                    idx + 1,
+                                    None,
+                                    None,
+                                    &mut widget_cache,
+                                    &mut buf_cache,
+                                );
                             }
                         }
                     }
@@ -1040,22 +1055,21 @@ impl BrushCanvas {
     fn draw_stroke(&self, pressure: f64) {
         let mut project = self.imp().project.borrow_mut();
         let state = self.imp().editor_state.get().unwrap().borrow();
-        let color = state.primary_color.borrow();
-        let color_int = color.to_rgba8().to_u8_array();
 
-        let (x, y) = self.imp().mouse_pos.get();
-        let (new_x, new_y) = self.screen_to_canvas(&project, x as f64, y as f64);
+        // Brush parameters
+        let color = state.primary_color.borrow().to_rgba8().to_u8_array();
+        let base_size = state.brush_size.borrow();
 
-        println!("Old X: {}, Old Y: {}", x, y);
-        println!("X: {}, Y: {}", new_x, new_y);
+        // Brush coordinates
+        let (px, py) = self.imp().mouse_pos.get();
+        let (cx, cy) = self.screen_to_canvas(&project, px as f64, py as f64);
 
         if let Some(active_id) = self.imp().active_layer.get() {
             if let Some(layer) = project.find_layer_mut(active_id) {
                 // TODO: Brush engine
-                let base_size = 10;
-                let dynamic_size = (base_size as f64 * pressure) as i32;
+                let dynamic_size = (*base_size as f64 * pressure) as i32;
 
-                layer.draw_brush_dab(new_x as i32, new_y as i32, dynamic_size, color_int);
+                layer.draw_brush_dab(cx as i32, cy as i32, dynamic_size, color);
 
                 self.imp().canvas.queue_render();
             }
