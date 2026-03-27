@@ -18,13 +18,16 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
+use glow::HasContext;
+use struct_iterable::Iterable;
+
 use crate::components::utils::renderer::shader::ShaderProgram;
 
 const VERT: &str = include_str!("./glsl/vert.glsl");
 const PIXEL_FRAG: &str = include_str!("./glsl/pixel.glsl");
 const BG_FRAG: &str = include_str!("./glsl/checkerboard.glsl");
 
-#[derive(Debug)]
+#[derive(Debug, Iterable)]
 pub struct ShaderManager {
     pub background: ShaderProgram,
     pub layer: ShaderProgram,
@@ -35,6 +38,16 @@ impl ShaderManager {
         Self {
             background: ShaderProgram::new(gl, VERT, BG_FRAG),
             layer: ShaderProgram::new(gl, VERT, PIXEL_FRAG),
+        }
+    }
+
+    pub unsafe fn destroy(&self, gl: &glow::Context) {
+        gl.use_program(None);
+
+        for (_name, shader) in self.iter() {
+            if let Some(program) = shader.downcast_ref::<ShaderProgram>() {
+                program.destroy(gl);
+            }
         }
     }
 }

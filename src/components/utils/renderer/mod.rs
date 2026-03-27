@@ -22,3 +22,4 @@ pub mod shader;
 pub mod shader_manager;
 pub mod render;
 pub mod buffer;
+pub mod utils;

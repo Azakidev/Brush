@@ -371,7 +371,6 @@ mod imp {
                         let obj = obj.obj();
                         let imp = obj.imp();
                         let label = &imp.brush_opacity_label;
-                        let state = imp.editor_state.borrow();
 
                         let val = s.value().clamp(0f64, 1f64);
                         let label_val = (val * 100f64).clamp(0f64, 100f64);

@@ -98,4 +98,9 @@ impl LayerBuffer {
             offset_y: y,
         }
     }
+
+    pub unsafe fn destroy(&self, gl: &glow::Context) {
+        gl.delete_framebuffer(self.framebuffer);
+        gl.delete_texture(self.texture);
+    }
 }

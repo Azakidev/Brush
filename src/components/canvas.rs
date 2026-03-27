@@ -53,6 +53,8 @@ use crate::{
 
 mod imp {
 
+    use glow::HasContext;
+
     use super::*;
 
     #[allow(dead_code)]
@@ -244,13 +246,45 @@ mod imp {
                 ));
 
                 let weak_self = self.downgrade();
-
                 canvas.connect_render(move |area, _context| {
                     let Some(obj) = weak_self.upgrade() else {
                         return glib::Propagation::Proceed;
                     };
 
                     render_pass(&obj.obj(), area)
+                });
+
+                let weak_self = self.downgrade();
+                canvas.connect_unrealize(move |_area| {
+                    if let Some(obj) = weak_self.upgrade() {
+                        
+                        let Some(gl) = obj.gl_context.get() else {
+                            return;
+                        };
+
+                        let buffer_cache = obj.buffer_cache.borrow_mut();
+                        buffer_cache
+                            .iter()
+                            .for_each(|(_uuid, buf)| unsafe { buf.destroy(gl) });
+
+                        if let Some(root_buf) = obj.gl_root_fbo.get() {
+                            unsafe {
+                                root_buf.destroy(gl);
+                            }
+                        }
+
+                        if let Some(shader_manager) = obj.gl_shader_manager.get() {
+                            unsafe {
+                                shader_manager.borrow().destroy(gl);
+                            }
+                        }
+                        
+                        if let Some(vao) = obj.gl_vao.get() {
+                            unsafe {
+                                gl.delete_vertex_array(*vao);
+                            }
+                        }
+                    };
                 });
             }
         }

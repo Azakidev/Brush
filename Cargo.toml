@@ -13,6 +13,9 @@ gtk = { version = "0.11", package = "gtk4", features = ["gnome_49"] }
 # Utils
 color = { version = "0.3" }
 uuid = { version = "1.22", features = ["v4"] }
+strum = { version = "0.28" }
+strum_macros = { version = "0.28" }
+struct_iterable = { version = "0.1" }
 
 # Serde
 serde = { version = "1.0", features = ["derive"] }

@@ -67,9 +67,13 @@ impl ShaderProgram {
     pub unsafe fn bind(&self, gl: &glow::Context) {
         gl.use_program(Some(self.program));
     }
+
+    pub unsafe fn destroy(&self, gl: &glow::Context) {
+        gl.delete_program(self.program);
+    }
 }
 
-pub unsafe fn compile_shader(gl: &glow::Context, shader_type: u32, source: &str) -> glow::Shader {
+unsafe fn compile_shader(gl: &glow::Context, shader_type: u32, source: &str) -> glow::Shader {
     use glow::HasContext;
     let shader = gl.create_shader(shader_type).expect("Cannot create shader");
     gl.shader_source(shader, source);

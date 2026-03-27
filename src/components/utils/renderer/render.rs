@@ -28,7 +28,7 @@ use uuid::Uuid;
 use crate::{
     components::{
         canvas::BrushCanvas,
-        utils::renderer::{buffer::LayerBuffer, shader_manager::ShaderManager},
+        utils::renderer::{buffer::LayerBuffer, shader_manager::ShaderManager, utils::clean_unused_buffers},
     },
     data::{layer::Layer, project::BrushProject},
 };
@@ -92,6 +92,9 @@ pub fn render_pass(canvas: &BrushCanvas, area: &gtk::GLArea) -> glib::Propagatio
 
     unsafe {
         use glow::HasContext;
+
+        // Cleanup deleted buffers
+        clean_unused_buffers(gl, &mut cache, &project);
 
         // Save default FBO
         let default_fbo_id = gl.get_parameter_i32(glow::FRAMEBUFFER_BINDING) as u32;
@@ -429,43 +432,4 @@ unsafe fn get_or_create_root_buffer<'a>(
     }
 
     imp.gl_root_fbo.get().unwrap()
-}
-
-#[allow(dead_code)]
-fn debug_matrix(label: &str, m: &glam::Mat4) {
-    let cols = m.to_cols_array_2d();
-    println!("--- {} ---", label);
-    for row in 0..4 {
-        println!(
-            "[{:7.2}, {:7.2}, {:7.2}, {:7.2}]",
-            cols[0][row], cols[1][row], cols[2][row], cols[3][row]
-        );
-    }
-}
-
-#[allow(dead_code)]
-unsafe fn debug_buffer_contents(gl: &glow::Context, layer: &Layer) {
-    let (w, h) = (layer.width(), layer.height());
-    let mut pixels = vec![0u8; (w * h * 4) as usize];
-
-    gl.read_pixels(
-        0,
-        0,
-        w as i32,
-        h as i32,
-        glow::RGBA,
-        glow::UNSIGNED_BYTE,
-        glow::PixelPackData::Slice(Some(&mut pixels)),
-    );
-
-    let has_data = pixels.iter().any(|&x| x > 0);
-    let sum: u64 = pixels.iter().map(|&x| x as u64).sum();
-
-    println!("--- FBO Diagnostic for Group {} ---", layer.id());
-    println!("Dimensions: {}x{}", w, h);
-    println!("Has non-zero pixels: {}", has_data);
-    println!(
-        "Byte Sum: {} (If 0, the texture is totally empty/transparent)",
-        sum
-    );
 }
