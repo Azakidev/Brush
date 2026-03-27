@@ -102,7 +102,7 @@ pub fn render_pass(canvas: &BrushCanvas, area: &gtk::GLArea) -> glib::Propagatio
         gl.bind_vertex_array(Some(*vao));
 
         // Create root FBO and clear it
-        let root_fbo = LayerBuffer::new(gl, 0, 0, project.width, project.height, None);
+        let root_fbo = get_or_create_root_buffer(gl, canvas, &project);
 
         gl.bind_framebuffer(glow::FRAMEBUFFER, Some(root_fbo.framebuffer));
         gl.viewport(0, 0, pw, ph);
@@ -112,7 +112,7 @@ pub fn render_pass(canvas: &BrushCanvas, area: &gtk::GLArea) -> glib::Propagatio
 
         // Render layers to FBO
         gl.enable(glow::BLEND);
-        gl.blend_func(glow::SRC_ALPHA, glow::ONE_MINUS_SRC_ALPHA);
+        gl.blend_func(glow::SRC_ALPHA, glow::BLEND_SRC_ALPHA);
 
         let root_mvp = glam::Mat4::orthographic_lh(0.0, pw as f32, ph as f32, 0.0, -1.0, 1.0);
 
@@ -204,6 +204,8 @@ unsafe fn render_layer_tree(
                 // gl.bind_framebuffer(glow::FRAMEBUFFER, parent_fbo);
             }
             Layer::Group(_) => {
+                layer.resize_group();
+
                 let (gw, gh) = (layer.width() as i32, layer.height() as i32);
                 let (gx, gy) = (layer.x() as f32, layer.y() as f32);
 
@@ -215,8 +217,8 @@ unsafe fn render_layer_tree(
 
                 gl.bind_framebuffer(glow::FRAMEBUFFER, Some(group_buffer.framebuffer));
                 gl.viewport(0, 0, gw, gh);
-                // gl.clear_color(0.0, 0.0, 0.0, 0.0); // Transparent background!
-                // gl.clear(glow::COLOR_BUFFER_BIT);
+                gl.clear_color(0.0, 0.0, 0.0, 0.0); // Transparent background!
+                gl.clear(glow::COLOR_BUFFER_BIT);
 
                 let group_proj =
                     glam::Mat4::orthographic_lh(0.0, gw as f32, gh as f32, 0.0, -1.0, 1.0);
@@ -315,7 +317,7 @@ pub unsafe fn composite_buffer(
     }
 
     gl.enable(glow::BLEND);
-    gl.blend_func(glow::SRC_ALPHA, glow::ONE_MINUS_SRC_ALPHA);
+    gl.blend_func(glow::ONE, glow::ONE_MINUS_SRC_ALPHA);
     gl.blend_equation(glow::FUNC_ADD);
 
     gl.bind_texture(glow::TEXTURE_2D, Some(buffer.texture));
@@ -349,7 +351,7 @@ pub unsafe fn composite_root_buffer(
     }
 
     gl.enable(glow::BLEND);
-    gl.blend_func(glow::SRC_ALPHA, glow::ONE_MINUS_SRC_ALPHA);
+    gl.blend_func(glow::ONE, glow::ONE_MINUS_SRC_ALPHA);
     gl.blend_equation(glow::FUNC_ADD);
 
     gl.bind_texture(glow::TEXTURE_2D, Some(buffer.texture));
@@ -409,6 +411,24 @@ pub unsafe fn draw_checkerboard(
     }
 
     gl.draw_arrays(glow::TRIANGLE_STRIP, 0, 4);
+}
+
+unsafe fn get_or_create_root_buffer<'a>(
+    gl: &glow::Context,
+    canvas: &'a BrushCanvas,
+    project: &BrushProject,
+) -> &'a LayerBuffer {
+    let imp = canvas.imp();
+    let root_fbo = &imp.gl_root_fbo;
+
+    if root_fbo.get().is_none() {
+        let fbo = LayerBuffer::new(gl, 0, 0, project.width, project.height, None);
+        imp.gl_root_fbo
+            .set(fbo)
+            .expect("Root FBO already set, this shouldn't happen, just checked it's empty");
+    }
+
+    imp.gl_root_fbo.get().unwrap()
 }
 
 #[allow(dead_code)]

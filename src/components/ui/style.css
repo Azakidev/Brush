@@ -26,6 +26,19 @@ colorChip {
     border-radius: 16px;
 }
 
+.filled_scale trough {
+    min-height: 24px;
+    margin: 0;
+}
+
+.filled_scale slider {
+    opacity: 0;
+}
+
+.recents_container {
+    border-radius: 16px;
+}
+
 .layer_label {
     font-size: 13px;
 }

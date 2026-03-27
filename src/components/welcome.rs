@@ -28,7 +28,9 @@ mod imp {
     pub struct BrushWelcome {
         // Template widgets
         #[template_child]
-        open_editor: TemplateChild<gtk::Button>
+        new_document: TemplateChild<gtk::Button>,
+        #[template_child]
+        open_document: TemplateChild<gtk::Button>
     }
 
     #[glib::object_subclass]

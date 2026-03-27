@@ -116,17 +116,127 @@ template $BrushEditor: Box {
 
               Box {
                 orientation: vertical;
+                margin-top: 6;
+                margin-bottom: 6;
+                margin-start: 6;
+                margin-end: 6;
 
-                Gtk.Scale brush_opacity {
-                  orientation: horizontal;
-                  width-request: 150;
-                  hexpand: true;
+                styles [
+                  "frame",
+                  "tree_container",
+                ]
+
+                Box {
+                  orientation: vertical;
+                  margin-top: 8;
+
+                  Box {
+                    orientation: horizontal;
+                    margin-start: 12;
+                    margin-end: 12;
+                    hexpand: true;
+
+                    Label {
+                      label: _("Brush opacity");
+                      hexpand: true;
+                      halign: start;
+                    }
+
+                    SpinButton brush_opacity_label {
+                      halign: end;
+                      update-policy: if_valid;
+                      numeric: true;
+
+                      adjustment: Gtk.Adjustment {
+                        lower: 0;
+                        upper: 100;
+                        value: 100;
+                        step-increment: 5;
+                        page-increment: 10;
+                        page-size: 0;
+                      };
+                    }
+                  }
+
+                  Gtk.Scale brush_opacity {
+                    orientation: horizontal;
+                    width-request: 150;
+                    hexpand: true;
+                    round-digits: 2;
+                    digits: 2;
+                    draw-value: false;
+                    value-pos: right;
+                    can-focus: false;
+
+                    adjustment: Gtk.Adjustment {
+                        lower: 0;
+                        upper: 1;
+                        value: 1;
+                        step-increment: 0.05;
+                        page-increment: 0.10;
+                        page-size: 0;
+                      };
+
+                    styles [
+                      "filled_scale",
+                    ]
+                  }
                 }
 
-                Gtk.Scale brush_size {
-                  orientation: horizontal;
+                Box {
+                  orientation: vertical;
                   hexpand: true;
-                  width-request: 150;
+
+                  Box {
+                    orientation: horizontal;
+                    margin-start: 12;
+                    margin-end: 12;
+
+                    Label {
+                      label: _("Brush scale");
+                      hexpand: true;
+                      halign: start;
+                    }
+
+                    SpinButton brush_size_label {
+                      halign: end;
+                      update-policy: if_valid;
+                      numeric: true;
+
+                      adjustment: Gtk.Adjustment {
+                        lower: 1;
+                        upper: 1000;
+                        value: 40;
+                        step-increment: 1;
+                        page-increment: 10;
+                        page-size: 0;
+                      };
+                    }
+                  }
+
+                  Gtk.Scale brush_size {
+                    orientation: horizontal;
+                    width-request: 150;
+                    hexpand: true;
+                    round-digits: 5;
+                    digits: 5;
+                    draw-value: false;
+                    value-pos: right;
+                    can-focus: false;
+
+                    adjustment: Gtk.Adjustment {
+                      lower: 0;
+                      upper: 1;
+                      value: 0.4;
+                      step-increment: 1;
+                      page-increment: 10;
+                      page-size: 0;
+                    };
+
+                    styles [
+                      "filled_scale",
+                    ]
+                  }
                 }
               }
             }

@@ -19,31 +19,30 @@
  */
 
 use adw::{prelude::WidgetExt, subclass::prelude::*, TabPage};
-use gtk::glib::property::PropertySet;
-use gtk::glib::VariantTy;
 use gtk::{
     gdk, gio,
     glib::{
         self, clone,
         object::{Cast, ObjectExt},
+        property::PropertySet,
         types::StaticType,
         variant::ToVariant,
-        WeakRef,
+        VariantTy, WeakRef,
     },
     prelude::BoxExt,
 };
-use std::collections::HashMap;
-use std::str::FromStr;
 use std::{
     cell::{Cell, RefCell},
+    collections::HashMap,
     rc::Rc,
+    str::FromStr,
 };
 use uuid::Uuid;
 
 use crate::{
     components::{
-        color_chip::BrushColorChip,
         canvas::BrushCanvas,
+        color_chip::BrushColorChip,
         layer_item::BrushLayerItem,
         layer_tree::BrushLayerTree,
         utils::{color::oklab_to_rgba, editor_state::BrushEditorState},
@@ -53,6 +52,10 @@ use crate::{
 use std::ops::Sub;
 
 mod imp {
+
+    use std::ops::Div;
+
+    use gtk::prelude::{EditableExt, RangeExt};
 
     use super::*;
 
@@ -89,6 +92,10 @@ mod imp {
         pub brush_opacity: TemplateChild<gtk::Scale>,
         #[template_child]
         pub brush_size: TemplateChild<gtk::Scale>,
+        #[template_child]
+        pub brush_opacity_label: TemplateChild<gtk::SpinButton>,
+        #[template_child]
+        pub brush_size_label: TemplateChild<gtk::SpinButton>,
 
         // State, stored in the editor content but needs to be referenced by UI
         pub editor_state: Rc<RefCell<BrushEditorState>>,
@@ -195,14 +202,13 @@ mod imp {
                 }
             });
 
-
             klass.install_action("editor.move-layer-up", None, |editor, _, _| {
                 if let Some(tab) = editor.imp().tab_view.selected_page() {
                     let _ = tab.child().activate_action("canvas.move-layer-up", None);
                     editor.sync_tab(tab);
                 }
             });
-            
+
             klass.install_action("editor.move-layer-down", None, |editor, _, _| {
                 if let Some(tab) = editor.imp().tab_view.selected_page() {
                     let _ = tab.child().activate_action("canvas.move-layer-down", None);
@@ -332,6 +338,104 @@ mod imp {
                     secondary.set_color(rgba);
                     None
                 });
+
+                obj.imp().brush_opacity.connect_value_changed(clone!(
+                    #[weak(rename_to = obj)]
+                    self,
+                    move |s| {
+                        let val = s.value().div(100f64).clamp(0f64, 100f64);
+                        let obj = obj.obj();
+                        let imp = obj.imp();
+                        let state = imp.editor_state.borrow();
+                        state.set_brush_opacity(val as f32);
+                    }
+                ));
+
+                obj.imp().brush_opacity.connect_value_changed(clone!(
+                    #[weak(rename_to = obj)]
+                    self,
+                    move |s| {
+                        let obj = obj.obj();
+                        let imp = obj.imp();
+                        let state = imp.editor_state.borrow();
+
+                        let val = s.value().clamp(0f64, 1f64);
+                        state.set_brush_opacity(val as f32);
+                    }
+                ));
+
+                obj.imp().brush_opacity.connect_value_changed(clone!(
+                    #[weak(rename_to = obj)]
+                    self,
+                    move |s| {
+                        let obj = obj.obj();
+                        let imp = obj.imp();
+                        let label = &imp.brush_opacity_label;
+                        let state = imp.editor_state.borrow();
+
+                        let val = s.value().clamp(0f64, 1f64);
+                        let label_val = (val * 100f64).clamp(0f64, 100f64);
+
+                        label.set_value(label_val);
+                    }
+                ));
+
+                obj.imp().brush_opacity_label.connect_changed(clone!(
+                    #[weak(rename_to = obj)]
+                    self,
+                    move |l| {
+                        let obj = obj.obj();
+                        let imp = obj.imp();
+                        let slider = &imp.brush_opacity;
+                        let state = imp.editor_state.borrow();
+
+                        let val = (l.value() / 100f64).clamp(0f64, 1f64);
+                        slider.set_value(val);
+                        state.set_brush_opacity(val as f32);
+                    }
+                ));
+
+                obj.imp().brush_size.connect_value_changed(clone!(
+                    #[weak(rename_to = obj)]
+                    self,
+                    move |s| {
+                        let obj = obj.obj();
+                        let imp = obj.imp();
+                        let label = &imp.brush_size_label;
+                        let state = imp.editor_state.borrow();
+
+                        let val = s.value().clamp(0f64, 1f64);
+                        let min_val = 1.0f64;
+                        let max_val = 1000.0f64;
+                        let mapped_val = min_val * (max_val / min_val).powf(val);
+
+                        state.set_brush_size(mapped_val as u32);
+                        label.set_text(&(mapped_val as u32).to_string());
+                    }
+                ));
+
+                obj.imp().brush_size_label.connect_changed(clone!(
+                    #[weak(rename_to = obj)]
+                    self,
+                    move |l| {
+                        let obj = obj.obj();
+                        let imp = obj.imp();
+                        let slider = &imp.brush_size;
+                        let state = imp.editor_state.borrow();
+
+                        let val = l.text().to_string();
+                        if let Ok(num) = val.parse::<u32>() {
+                            let clamped = num.clamp(1, 1000);
+                            let min_val = 1.0f64;
+                            let max_val = 1000.0f64;
+
+                            let slider_pos =
+                                (clamped as f64 / min_val).ln() / (max_val / min_val).ln();
+                            slider.set_value(slider_pos);
+                            state.set_brush_size(clamped);
+                        }
+                    }
+                ));
             }
         }
     }

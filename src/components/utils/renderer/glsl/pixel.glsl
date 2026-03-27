@@ -9,10 +9,9 @@ uniform sampler2D u_texture;
 uniform float u_opacity;
 
 void main() {
-    vec4 texture = texture(u_texture, v_tex_coords);
+    vec4 tex_color = texture(u_texture, v_tex_coords);
 
-    texture.a * u_opacity; // Apply alpha
+    float final_alpha = tex_color.a * u_opacity;
 
-    color = texture;
+    color = vec4(tex_color.rgb * final_alpha, final_alpha);
 }
-

@@ -62,7 +62,6 @@ impl GroupData {
                 child.resize_group();
             }
 
-            // Note: If child is a group, this needs to be called recursively
             let (cx, cy, cw, ch) = (
                 child.x(),
                 child.y(),
@@ -86,11 +85,5 @@ impl GroupData {
             self.width = (max_x - min_x) as u32;
             self.height = (max_y - min_y) as u32;
         }
-
-        println!("Group layer resized");
-        println!("X: {}", self.x);
-        println!("Y: {}", self.y);
-        println!("Width: {}", self.width);
-        println!("Height: {}", self.height);
     }
 }

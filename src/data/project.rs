@@ -23,7 +23,6 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use glow::NativeFramebuffer;
 use gtk::glib::WeakRef;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -130,7 +129,6 @@ impl BrushProject {
                     if children.iter().any(|l| l.id() == layer.id()) {
                         parent.remove_child(layer); // Force clear group texture
                         buf_cache.remove(&parent.id());
-                        buf_cache.remove(&layer.id());
                         widget_cache.remove(&parent.id());
                         widget_cache.remove(&layer.id());
                     }
@@ -140,7 +138,6 @@ impl BrushProject {
             if let Some(idx) = self.layers.iter().position(|l| l.id() == layer.id()) {
                 self.layers.remove(idx);
                 widget_cache.remove(&layer.id());
-                buf_cache.remove(&layer.id());
             }
         }
         // Add on new position

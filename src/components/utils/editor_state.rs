@@ -24,7 +24,7 @@ use color::{Hsl, Oklab, OpaqueColor};
 
 use crate::components::utils::tools::BrushTool;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 #[allow(dead_code)]
 pub struct BrushEditorState {
     pub tool: RefCell<BrushTool>,
@@ -71,5 +71,13 @@ impl BrushEditorState {
             _ => unreachable!(),
         };
         self.tool.replace(tool);
+    }
+
+    pub fn set_brush_opacity(&self, value: f32) {
+        self.brush_opacity.replace(value);
+    }
+
+    pub fn set_brush_size(&self, value: u32) {
+        self.brush_size.replace(value);
     }
 }

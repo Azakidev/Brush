@@ -32,10 +32,37 @@ template $BrushWelcome: Box {
         valign: center;
         halign: center;
         orientation: horizontal;
+        spacing: 8;
 
-        Button open_editor {
-          label: _("Editor");
+        Button new_document {
           action-name: "win.new-document";
+
+          accessibility {
+            label: _("New project");
+          }
+
+          child: Adw.ButtonContent {
+            label: _("New project");
+            icon-name: "document-new-symbolic";
+          };
+
+          styles [
+            "pill",
+            "suggested-action",
+          ]
+        }
+
+        Button open_document {
+          action-name: "win.open-document";
+
+          accessibility {
+            label: _("Open project");
+          }
+
+          child: Adw.ButtonContent {
+            label: _("Open project");
+            icon-name: "folder-open-symbolic";
+          };
 
           styles [
             "pill",

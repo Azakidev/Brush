@@ -73,6 +73,7 @@ mod imp {
         pub gl_lib: OnceCell<Library>,
         pub gl_shader_manager: OnceCell<RefCell<ShaderManager>>,
         pub gl_vao: OnceCell<NativeVertexArray>,
+        pub gl_root_fbo: OnceCell<LayerBuffer>,
         // Viewport
         pub active_layer: Cell<Option<Uuid>>,
         pub zoom: Cell<f32>,
@@ -1057,8 +1058,16 @@ impl BrushCanvas {
         let state = self.imp().editor_state.get().unwrap().borrow();
 
         // Brush parameters
-        let color = state.primary_color.borrow().to_rgba8().to_u8_array();
         let base_size = state.brush_size.borrow();
+        let base_opacity = state.brush_opacity.borrow();
+
+        let color = state.primary_color.borrow().to_rgba8();
+        let color = [
+            color.r,
+            color.g,
+            color.b,
+            (color.a as f32 * *base_opacity) as u8,
+        ];
 
         // Brush coordinates
         let (px, py) = self.imp().mouse_pos.get();
@@ -1067,7 +1076,7 @@ impl BrushCanvas {
         if let Some(active_id) = self.imp().active_layer.get() {
             if let Some(layer) = project.find_layer_mut(active_id) {
                 // TODO: Brush engine
-                let dynamic_size = (*base_size as f64 * pressure) as i32;
+                let dynamic_size = (*base_size as f64 * pressure).clamp(1f64, 1000f64) as i32;
 
                 layer.draw_brush_dab(cx as i32, cy as i32, dynamic_size, color);
 
