@@ -18,7 +18,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-use adw::{prelude::WidgetExt, subclass::prelude::*, TabPage};
+use adw::{TabPage, prelude::{GtkWindowExt, RangeExt, WidgetExt}, subclass::prelude::*};
 use gtk::{
     gdk, gio,
     glib::{
@@ -38,6 +38,7 @@ use std::{
     str::FromStr,
 };
 use uuid::Uuid;
+use std::ops::Sub;
 
 use crate::{
     components::{
@@ -49,13 +50,9 @@ use crate::{
     },
     data::project::BrushProject,
 };
-use std::ops::Sub;
 
 mod imp {
 
-    use std::ops::Div;
-
-    use gtk::prelude::{EditableExt, GtkWindowExt, RangeExt};
 
     use super::*;
 

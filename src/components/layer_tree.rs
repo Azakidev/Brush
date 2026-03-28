@@ -19,9 +19,10 @@
  */
 
 use adw::subclass::prelude::*;
-use gtk::{glib, TemplateChild};
+use gtk::{TemplateChild, glib};
 
 mod imp {
+
 
     use super::*;
 
@@ -31,6 +32,8 @@ mod imp {
         // Widgets
         #[template_child]
         pub tree: TemplateChild<gtk::Box>,
+        #[template_child]
+        pub layer_opacity: TemplateChild<gtk::Scale>,
     }
 
     #[glib::object_subclass]
@@ -48,7 +51,24 @@ mod imp {
         }
     }
 
-    impl ObjectImpl for BrushLayerTree {}
+    impl ObjectImpl for BrushLayerTree {
+        fn constructed(&self) {
+            self.parent_constructed();
+
+            let obj = self.obj();
+            let layer_slider = obj.imp().layer_opacity;
+
+            self.layer_opacity.get().connect_value_changed(
+                    move |s| {
+                        let val = s.value();
+                    let _ = s.activate_action(
+                        "editor.set-layer-opacity",
+                        Some(&val.to_variant()),
+                    );
+                    }
+            );
+        }
+    }
     impl WidgetImpl for BrushLayerTree {}
     impl BoxImpl for BrushLayerTree {}
 }

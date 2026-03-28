@@ -4,6 +4,29 @@ template $BrushLayerTree: Box {
   vexpand: true;
   orientation: vertical;
   margin-top: 4;
+  spacing: 4;
+
+  Gtk.Scale layer_opacity {
+    orientation: horizontal;
+    width-request: 150;
+    hexpand: true;
+    draw-value: false;
+    value-pos: right;
+    can-focus: false;
+
+    adjustment: Gtk.Adjustment {
+      lower: 0;
+      upper: 1;
+      value: 1;
+      step-increment: 0.05;
+      page-increment: 0.05;
+      page-size: 0;
+    };
+
+    styles [
+      "filled_scale",
+    ]
+  }
 
   ScrolledWindow {
     has-frame: true;
