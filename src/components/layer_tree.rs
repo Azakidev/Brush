@@ -19,10 +19,14 @@
  */
 
 use adw::subclass::prelude::*;
+use adw::prelude::WidgetExt;
+use adw::prelude::ToVariant;
 use gtk::{TemplateChild, glib};
 
 mod imp {
 
+
+    use gtk::prelude::RangeExt;
 
     use super::*;
 
@@ -55,16 +59,13 @@ mod imp {
         fn constructed(&self) {
             self.parent_constructed();
 
-            let obj = self.obj();
-            let layer_slider = obj.imp().layer_opacity;
-
             self.layer_opacity.get().connect_value_changed(
                     move |s| {
                         let val = s.value();
-                    let _ = s.activate_action(
-                        "editor.set-layer-opacity",
-                        Some(&val.to_variant()),
-                    );
+                        let _ = s.activate_action(
+                            "editor.set-layer-opacity",
+                            Some(&val.to_variant()),
+                        );
                     }
             );
         }

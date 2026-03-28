@@ -132,6 +132,18 @@ mod imp {
                     }
                 },
             );
+            
+            klass.install_action(
+                "canvas.set-layer-opacity",
+                Some(VariantTy::DOUBLE),
+                |canvas, _, arg| {
+                    if let Some(var) = arg {
+                        if let Some(val) = var.get::<f64>() {
+                            canvas.set_layer_opacity(val as f32);
+                        }
+                    }
+                }
+            );
 
             klass.install_action("canvas.zoom-out", None, move |content, _, _| {
                 content.zoom_by(-0.05f32);
@@ -681,6 +693,16 @@ impl BrushCanvas {
     pub fn rename_layer(&self, uuid: Uuid, new_name: String) {
         let mut project = self.imp().project.borrow_mut();
         project.rename_layer(uuid, new_name);
+    }
+
+    pub fn set_layer_opacity(&self, opacity: f32) {
+        if let Some(active_id) = self.imp().active_layer.get() {
+            let mut project = self.imp().project.borrow_mut();
+            if let Some(active_layer) = project.find_layer_mut(active_id) {
+                active_layer.set_opacity(opacity);
+            }
+        }
+        self.imp().canvas.queue_draw();
     }
 
     // Viewport control

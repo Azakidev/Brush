@@ -192,6 +192,16 @@ mod imp {
                 },
             );
 
+            klass.install_action(
+                "editor.set-layer-opacity",
+                Some(VariantTy::DOUBLE),
+                |editor, _, arg| {
+                if let Some(tab) = editor.imp().tab_view.selected_page() {
+                    let _ = tab.child().activate_action("canvas.set-layer-opacity", arg);
+                }
+                }
+            );
+
             klass.install_action("editor.delete-layer", None, |editor, _, _| {
                 if let Some(tab) = editor.imp().tab_view.selected_page() {
                     let _ = tab.child().activate_action("canvas.remove-layer", None);

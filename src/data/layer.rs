@@ -260,6 +260,14 @@ impl Layer {
         }
     }
 
+    pub fn set_opacity(&mut self, opacity: f32) {
+        match self {
+            Layer::Pixel(inner) => inner.parameters.opacity = opacity,
+            Layer::Group(inner) => inner.parameters.opacity = opacity,
+            _ => {}
+        }
+    }
+
     pub fn draw_brush_dab(&mut self, x: i32, y: i32, radius: i32, color: [u8; 4]) {
         // Convert global canvas coordinates to layer-local coordinates
         let local_x = x - self.x();
