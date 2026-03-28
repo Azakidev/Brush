@@ -22,8 +22,13 @@ colorChip {
     border-left: 1px solid var(--border-color);
 }
 
-.tree_container {
+.rounded {
     border-radius: 16px;
+}
+
+.filled_scale {
+    margin: 0;
+    padding: 0;
 }
 
 .filled_scale trough {
@@ -32,11 +37,8 @@ colorChip {
 }
 
 .filled_scale slider {
-    opacity: 0;
-}
-
-.recents_container {
-    border-radius: 16px;
+    opacity: 0.5;
+    transform: scale(0.3) translateX(-32px);
 }
 
 .layer_label {

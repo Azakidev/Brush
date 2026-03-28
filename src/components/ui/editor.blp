@@ -123,119 +123,133 @@ template $BrushEditor: Box {
 
                 styles [
                   "frame",
-                  "tree_container",
+                  "rounded",
                 ]
 
                 Box {
                   orientation: vertical;
-                  margin-top: 8;
+                  margin-top: 12;
+                  margin-bottom: 12;
+                  margin-start: 12;
+                  margin-end: 12;
+                  spacing: 8;
 
                   Box {
-                    orientation: horizontal;
-                    margin-start: 12;
-                    margin-end: 12;
-                    hexpand: true;
+                    orientation: vertical;
+                    spacing: 6;
 
-                    Label {
-                      label: _("Brush opacity");
+                    Box {
+                      orientation: horizontal;
                       hexpand: true;
-                      halign: start;
+
+                      Label {
+                        label: _("Brush opacity");
+                        hexpand: true;
+                        halign: start;
+                      }
+
+                      SpinButton brush_opacity_label {
+                        halign: end;
+                        update-policy: if_valid;
+                        numeric: true;
+                        focusable: false;
+
+                        adjustment: Gtk.Adjustment {
+                          lower: 0;
+                          upper: 100;
+                          value: 100;
+                          step-increment: 5;
+                          page-increment: 10;
+                          page-size: 0;
+                        };
+                      }
+
+                      Label {
+                        label: _("%");
+                        margin-start: 2;
+                      }
                     }
 
-                    SpinButton brush_opacity_label {
-                      halign: end;
-                      update-policy: if_valid;
-                      numeric: true;
+                    Gtk.Scale brush_opacity {
+                      orientation: horizontal;
+                      width-request: 150;
+                      hexpand: true;
+                      draw-value: false;
+                      value-pos: right;
+                      can-focus: false;
 
                       adjustment: Gtk.Adjustment {
-                        lower: 0;
-                        upper: 100;
-                        value: 100;
-                        step-increment: 5;
-                        page-increment: 10;
-                        page-size: 0;
-                      };
-                    }
-                  }
-
-                  Gtk.Scale brush_opacity {
-                    orientation: horizontal;
-                    width-request: 150;
-                    hexpand: true;
-                    round-digits: 2;
-                    digits: 2;
-                    draw-value: false;
-                    value-pos: right;
-                    can-focus: false;
-
-                    adjustment: Gtk.Adjustment {
                         lower: 0;
                         upper: 1;
                         value: 1;
                         step-increment: 0.05;
-                        page-increment: 0.10;
+                        page-increment: 0.05;
                         page-size: 0;
                       };
 
-                    styles [
-                      "filled_scale",
-                    ]
+                      styles [
+                        "filled_scale",
+                      ]
+                    }
                   }
-                }
-
-                Box {
-                  orientation: vertical;
-                  hexpand: true;
 
                   Box {
-                    orientation: horizontal;
-                    margin-start: 12;
-                    margin-end: 12;
+                    orientation: vertical;
+                    hexpand: true;
+                    spacing: 6;
 
-                    Label {
-                      label: _("Brush scale");
-                      hexpand: true;
-                      halign: start;
+                    Box {
+                      orientation: horizontal;
+
+                      Label {
+                        label: _("Brush scale");
+                        hexpand: true;
+                        halign: start;
+                      }
+
+                      SpinButton brush_size_label {
+                        halign: end;
+                        update-policy: if_valid;
+                        numeric: true;
+                        focusable: false;
+
+                        adjustment: Gtk.Adjustment {
+                          lower: 1;
+                          upper: 1000;
+                          value: 40;
+                          step-increment: 1;
+                          page-increment: 10;
+                          page-size: 0;
+                        };
+                      }
+
+                      Label {
+                        label: _("px");
+                        margin-start: 2;
+                      }
                     }
 
-                    SpinButton brush_size_label {
-                      halign: end;
-                      update-policy: if_valid;
-                      numeric: true;
+                    Gtk.Scale brush_size {
+                      orientation: horizontal;
+                      width-request: 150;
+                      hexpand: true;
+                      draw-value: false;
+                      value-pos: right;
+                      can-focus: false;
 
                       adjustment: Gtk.Adjustment {
-                        lower: 1;
-                        upper: 1000;
-                        value: 40;
-                        step-increment: 1;
-                        page-increment: 10;
+                        lower: 0.0001;
+                        upper: 1;
+                        value: 0.4;
+                        step-increment: 0.01;
+                        page-increment: 0.05;
                         page-size: 0;
                       };
+
+                      styles [
+                        "filled_scale",
+                      ]
                     }
-                  }
-
-                  Gtk.Scale brush_size {
-                    orientation: horizontal;
-                    width-request: 150;
-                    hexpand: true;
-                    round-digits: 5;
-                    digits: 5;
-                    draw-value: false;
-                    value-pos: right;
-                    can-focus: false;
-
-                    adjustment: Gtk.Adjustment {
-                      lower: 0;
-                      upper: 1;
-                      value: 0.4;
-                      step-increment: 1;
-                      page-increment: 10;
-                      page-size: 0;
-                    };
-
-                    styles [
-                      "filled_scale",
-                    ]
                   }
                 }
               }

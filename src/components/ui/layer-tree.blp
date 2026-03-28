@@ -7,10 +7,11 @@ template $BrushLayerTree: Box {
 
   ScrolledWindow {
     has-frame: true;
+    can-focus: false;
     hscrollbar-policy: automatic;
 
     styles [
-      "tree_container",
+      "rounded",
     ]
 
     Box tree {

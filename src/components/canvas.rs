@@ -257,7 +257,6 @@ mod imp {
                 let weak_self = self.downgrade();
                 canvas.connect_unrealize(move |_area| {
                     if let Some(obj) = weak_self.upgrade() {
-                        
                         let Some(gl) = obj.gl_context.get() else {
                             return;
                         };
@@ -278,7 +277,7 @@ mod imp {
                                 shader_manager.borrow().destroy(gl);
                             }
                         }
-                        
+
                         if let Some(vao) = obj.gl_vao.get() {
                             unsafe {
                                 gl.delete_vertex_array(*vao);
@@ -1066,25 +1065,28 @@ impl BrushCanvas {
     ) -> (f64, f64) {
         let imp = self.imp();
 
-        let (win_w, win_h) = (self.width() as f64, self.height() as f64);
+        let win_w = self.width() as f32;
+        let win_h = self.height() as f32;
+        let canv_w = project.width as f32;
+        let canv_h = project.height as f32;
 
-        let zoom = imp.zoom.get() as f64;
+        let zoom = imp.zoom.get() as f32;
+        let rotation = imp.rotation.get() as f32; // In radians
         let (pos_x, pos_y) = imp.position.get();
-        let (canv_w, canv_h) = (project.width as f64, project.height as f64);
+        let (pos_x, pos_y) = (pos_x as f32, pos_y as f32);
 
-        // 1. Relative to screen center
-        let mut x = screen_x - (win_w / 2.0);
-        let mut y = screen_y - (win_h / 2.0);
+        let view =
+            glam::Mat4::from_translation(glam::vec3(win_w / 2.0 + pos_x, win_h / 2.0 + pos_y, 0.0))
+                * glam::Mat4::from_rotation_z(rotation)
+                * glam::Mat4::from_scale(glam::vec3(zoom, zoom, 1.0))
+                * glam::Mat4::from_translation(glam::vec3(-canv_w / 2.0, -canv_h / 2.0, 0.0));
 
-        // 2. Undo the position and zoom
-        x = (x - pos_x as f64) / zoom;
-        y = (y - pos_y as f64) / zoom;
+        let inv_view = view.inverse();
 
-        // 3. Undo the Top-Left origin shift
-        x += canv_w / 2.0;
-        y += canv_h / 2.0;
+        let point = glam::vec4(screen_x as f32, screen_y as f32, 0.0, 1.0);
+        let result = inv_view * point;
 
-        (x, y)
+        (result.x as f64, result.y as f64)
     }
 
     fn draw_stroke(&self, pressure: f64) {

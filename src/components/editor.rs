@@ -55,7 +55,7 @@ mod imp {
 
     use std::ops::Div;
 
-    use gtk::prelude::{EditableExt, RangeExt};
+    use gtk::prelude::{EditableExt, GtkWindowExt, RangeExt};
 
     use super::*;
 
@@ -223,6 +223,14 @@ mod imp {
                 }
             });
 
+            klass.install_action("editor.cancel", None, |editor, _, _| {
+                if let Some(root) = editor.root() {
+                    if let Some(window) = root.dynamic_cast_ref::<gtk::Window>() {
+                        window.set_focus(None::<&gtk::Widget>);
+                    }
+                };
+            });
+
             klass.install_property_action("editor.change-tool", "active_tool");
         }
 
@@ -343,43 +351,16 @@ mod imp {
                     #[weak(rename_to = obj)]
                     self,
                     move |s| {
-                        let val = s.value().div(100f64).clamp(0f64, 100f64);
-                        let obj = obj.obj();
-                        let imp = obj.imp();
-                        let state = imp.editor_state.borrow();
-                        state.set_brush_opacity(val as f32);
-                    }
-                ));
-
-                obj.imp().brush_opacity.connect_value_changed(clone!(
-                    #[weak(rename_to = obj)]
-                    self,
-                    move |s| {
-                        let obj = obj.obj();
-                        let imp = obj.imp();
-                        let state = imp.editor_state.borrow();
-
-                        let val = s.value().clamp(0f64, 1f64);
-                        state.set_brush_opacity(val as f32);
-                    }
-                ));
-
-                obj.imp().brush_opacity.connect_value_changed(clone!(
-                    #[weak(rename_to = obj)]
-                    self,
-                    move |s| {
+                        let val = s.value();
                         let obj = obj.obj();
                         let imp = obj.imp();
                         let label = &imp.brush_opacity_label;
 
-                        let val = s.value().clamp(0f64, 1f64);
-                        let label_val = (val * 100f64).clamp(0f64, 100f64);
-
-                        label.set_value(label_val);
+                        label.set_value(val * 100f64);
                     }
                 ));
 
-                obj.imp().brush_opacity_label.connect_changed(clone!(
+                obj.imp().brush_opacity_label.connect_value_changed(clone!(
                     #[weak(rename_to = obj)]
                     self,
                     move |l| {
@@ -389,6 +370,7 @@ mod imp {
                         let state = imp.editor_state.borrow();
 
                         let val = (l.value() / 100f64).clamp(0f64, 1f64);
+
                         slider.set_value(val);
                         state.set_brush_opacity(val as f32);
                     }
@@ -401,19 +383,18 @@ mod imp {
                         let obj = obj.obj();
                         let imp = obj.imp();
                         let label = &imp.brush_size_label;
-                        let state = imp.editor_state.borrow();
 
-                        let val = s.value().clamp(0f64, 1f64);
+                        let val = s.value().clamp(0.00001f64, 1f64);
+
                         let min_val = 1.0f64;
                         let max_val = 1000.0f64;
                         let mapped_val = min_val * (max_val / min_val).powf(val);
 
-                        state.set_brush_size(mapped_val as u32);
-                        label.set_text(&(mapped_val as u32).to_string());
+                        label.set_value(mapped_val);
                     }
                 ));
 
-                obj.imp().brush_size_label.connect_changed(clone!(
+                obj.imp().brush_size_label.connect_value_changed(clone!(
                     #[weak(rename_to = obj)]
                     self,
                     move |l| {
@@ -422,17 +403,14 @@ mod imp {
                         let slider = &imp.brush_size;
                         let state = imp.editor_state.borrow();
 
-                        let val = l.text().to_string();
-                        if let Ok(num) = val.parse::<u32>() {
-                            let clamped = num.clamp(1, 1000);
-                            let min_val = 1.0f64;
-                            let max_val = 1000.0f64;
+                        let val = l.value();
+                        let clamped = val.clamp(1f64, 1000f64);
+                        let min_val = 1.0f64;
+                        let max_val = 1000.0f64;
 
-                            let slider_pos =
-                                (clamped as f64 / min_val).ln() / (max_val / min_val).ln();
-                            slider.set_value(slider_pos);
-                            state.set_brush_size(clamped);
-                        }
+                        let slider_pos = (clamped / min_val).ln() / (max_val / min_val).ln();
+                        slider.set_value(slider_pos);
+                        state.set_brush_size(val as u32);
                     }
                 ));
             }
@@ -537,7 +515,7 @@ impl BrushEditor {
         let imp = self.imp();
         imp.shortcut_controller.add_shortcut(gtk::Shortcut::new(
             Some(gtk::KeyvalTrigger::new(
-                gdk::Key::T,
+                gdk::Key::N,
                 gdk::ModifierType::CONTROL_MASK,
             )),
             Some(gtk::NamedAction::new("editor.new-tab")),
@@ -628,6 +606,14 @@ impl BrushEditor {
                 gdk::ModifierType::ALT_MASK,
             )),
             Some(gtk::NamedAction::new("editor.move-layer-down")),
+        ));
+
+        imp.shortcut_controller.add_shortcut(gtk::Shortcut::new(
+            Some(gtk::KeyvalTrigger::new(
+                gdk::Key::Escape,
+                gdk::ModifierType::NO_MODIFIER_MASK,
+            )),
+            Some(gtk::NamedAction::new("editor.cancel")),
         ));
     }
 
