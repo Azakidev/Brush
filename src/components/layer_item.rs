@@ -116,15 +116,19 @@ glib::wrapper! {
 impl BrushLayerItem {
     pub fn new(
         layer: &Layer,
-        selected_layer: &Option<Uuid>,
+        selected_layer: Option<Uuid>,
         cache: &mut HashMap<Uuid, WeakRef<BrushLayerItem>>,
     ) -> Self {
-        // Return cached widget
-        if let Some(weak_widget) = cache.get(&layer.id()) {
-            if let Some(widget) = weak_widget.upgrade() {
-                return widget;
+        if let Some(entry) = cache.get(&layer.id()) {
+            if let Some(widget) = entry.upgrade() {
+                println!("Hit");
+                widget.update(selected_layer, layer);
+                return widget.clone();
+            } else {
+                println!("Failed to upgrade widget");
             }
         }
+        println!("Miss");
 
         let obj: BrushLayerItem = glib::Object::new();
         let imp = obj.imp();
@@ -134,6 +138,7 @@ impl BrushLayerItem {
         if let Some(selection) = selected_layer {
             obj.toggle_selected(selection);
         }
+
         obj.set_name(layer.name());
         obj.set_opacity(layer.opacity());
         obj.set_blend_mode(layer.blend_mode());
@@ -216,12 +221,12 @@ impl BrushLayerItem {
         self.imp().container.add_controller(controller);
     }
 
-    fn toggle_selected(&self, selected_layer: &Uuid) {
+    fn toggle_selected(&self, selected_layer: Uuid) {
         let imp = self.imp();
         let container = imp.container.get();
 
         if let Some(id) = imp.layer.get() {
-            if id == selected_layer {
+            if *id == selected_layer {
                 container.add_css_class("layer_selected");
             } else {
                 container.remove_css_class("layer_selected");
@@ -239,12 +244,13 @@ impl BrushLayerItem {
     fn set_opacity(&self, opacity: f32) {
         let imp = self.imp();
 
-        let opacity = opacity.mul(100f32).floor().to_string() + "%";
+        let opacity = opacity.mul(100f32).clamp(0f32, 100f32).floor();
+        let label = opacity.to_string() + "%";
 
-        if opacity == "100%" {
+        if opacity == 100f32 {
             imp.opacity.set_visible(false);
         } else {
-            imp.opacity.set_label(&opacity);
+            imp.opacity.set_label(&label);
             imp.opacity.set_visible(true);
         }
     }
@@ -260,8 +266,12 @@ impl BrushLayerItem {
         }
     }
 
-    pub fn update(&self, selected_layer: &Uuid, layer: &Layer) {
-        self.toggle_selected(selected_layer);
+    pub fn update(&self, selected_layer: Option<Uuid>, layer: &Layer) {
+        if let Some(id) = selected_layer {
+            self.toggle_selected(id);
+        } else {
+            self.imp().container.remove_css_class("layer_selected");
+        }
         self.set_name(layer.name());
         self.set_opacity(layer.opacity());
         self.set_blend_mode(layer.blend_mode());

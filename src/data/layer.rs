@@ -18,6 +18,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
+use color::{AlphaColor, Oklab};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -48,8 +49,8 @@ pub enum Layer {
 
 impl Layer {
     pub fn new_pixel(name: String, width: u32, height: u32) -> Self {
-        let mut pixels: Vec<u8> = Vec::new();
-        pixels.resize((width * height * 4) as usize, 0u8);
+        let mut pixels: Vec<f32> = Vec::new();
+        pixels.resize((width * height * 4) as usize, 0f32);
 
         let params = NodeLayerParameters::default();
         let data = PixelData::new(pixels, "OkLab".to_owned(), width, height);
@@ -65,12 +66,9 @@ impl Layer {
     }
 
     pub fn append(&mut self, index: usize, layer: Layer) {
-        match self {
-            Layer::Group(inner) => {
-                inner.data.layers.insert(index, layer);
-                self.resize_group();
-            }
-            _ => {}
+        if let Layer::Group(inner) = self {
+            inner.data.layers.insert(index, layer);
+            self.resize_group();
         }
     }
 
@@ -151,25 +149,25 @@ impl Layer {
         }
     }
 
-    pub fn pixel_data(&self) -> Option<&[u8]> {
-        match self {
-            Layer::Pixel(inner) => Some(&inner.data.pixels),
-            _ => None,
+    pub fn pixel_data(&self) -> Option<&Vec<f32>> {
+        if let Layer::Pixel(inner) = self {
+            return Some(&inner.data.pixels);
         }
+        None
     }
-    
-    pub fn pixel_data_mut(&mut self) -> Option<&mut [u8]> {
-        match self {
-            Layer::Pixel(inner) => Some(&mut inner.data.pixels),
-            _ => None,
+
+    pub fn pixel_data_mut(&mut self) -> Option<&mut Vec<f32>> {
+        if let Layer::Pixel(inner) = self {
+            return Some(&mut inner.data.pixels);
         }
+        None
     }
 
     pub fn children(&self) -> Option<&Vec<Layer>> {
-        match self {
-            Layer::Group(inner) => Some(&inner.data.layers),
-            _ => None,
+        if let Layer::Group(inner) = self {
+            return Some(&inner.data.layers);
         }
+        None
     }
 
     pub fn children_mut(&mut self) -> Option<&mut Vec<Layer>> {
@@ -201,15 +199,14 @@ impl Layer {
                     _ => unreachable!(), // Filters can't have filters
                 }
             }
-            _ => match self {
-                Layer::Group(inner) => {
+            _ => {
+                if let Layer::Group(inner) = self {
                     if let Some(idx) = inner.data.layers.iter().position(|l| l.id() == child.id()) {
                         inner.data.layers.remove(idx);
                         self.resize_group();
                     }
                 }
-                _ => {}
-            },
+            }
         }
     }
 
@@ -241,22 +238,16 @@ impl Layer {
     }
 
     pub fn resize(&mut self, new_width: u32, new_height: u32) {
-        match self {
-            Layer::Pixel(inner) => {
-                inner.data.width = new_width;
-                inner.data.height = new_height;
-                inner.data.resize(new_width, new_height);
-            }
-            _ => {}
+        if let Layer::Pixel(inner) = self {
+            inner.data.width = new_width;
+            inner.data.height = new_height;
+            inner.data.resize(new_width, new_height);
         }
     }
 
     pub fn resize_group(&mut self) {
-        match self {
-            Layer::Group(inner) => {
-                inner.data.calculate_group_bounds();
-            }
-            _ => {}
+        if let Layer::Group(inner) = self {
+            inner.data.calculate_group_bounds();
         }
     }
 
@@ -268,7 +259,7 @@ impl Layer {
         }
     }
 
-    pub fn draw_brush_dab(&mut self, x: i32, y: i32, radius: i32, color: [u8; 4]) {
+    pub fn draw_brush_dab(&mut self, x: i32, y: i32, radius: i32, color: AlphaColor<Oklab>) {
         // Convert global canvas coordinates to layer-local coordinates
         let local_x = x - self.x();
         let local_y = y - self.y();
@@ -284,7 +275,7 @@ impl Layer {
                     if px >= 0 && px < width && py >= 0 && py < height {
                         let idx = ((py * width + px) * 4) as usize;
                         if let Some(data) = self.pixel_data_mut() {
-                            data[idx..idx + 4].copy_from_slice(&color);
+                            data[idx..idx + 4].copy_from_slice(&color.components);
                         }
                     }
                 }
@@ -310,7 +301,7 @@ where
 
     // Flags
     #[serde(skip_serializing)]
-    is_dirty: bool
+    is_dirty: bool,
 }
 
 #[allow(dead_code)]
@@ -326,7 +317,7 @@ where
             filters: Vec::new(),
             parameters,
             data,
-            is_dirty: true
+            is_dirty: true,
         }
     }
 

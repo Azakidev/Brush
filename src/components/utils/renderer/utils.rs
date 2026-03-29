@@ -55,7 +55,7 @@ fn collect_ids(layers: &[Layer], ids: &mut std::collections::HashSet<Uuid>) {
     }
 }
 
-#[allow(dead_code)]
+#[allow(dead_code, clippy::needless_range_loop)]
 pub fn debug_matrix(label: &str, m: &glam::Mat4) {
     let cols = m.to_cols_array_2d();
     println!("--- {} ---", label);

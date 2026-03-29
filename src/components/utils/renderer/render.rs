@@ -28,7 +28,9 @@ use uuid::Uuid;
 use crate::{
     components::{
         canvas::BrushCanvas,
-        utils::renderer::{buffer::LayerBuffer, shader_manager::ShaderManager, utils::clean_unused_buffers},
+        utils::renderer::{
+            buffer::LayerBuffer, shader_manager::ShaderManager, utils::clean_unused_buffers,
+        },
     },
     data::{layer::Layer, project::BrushProject},
 };
@@ -63,7 +65,7 @@ pub fn setup_gl(gl: &glow::Context) -> Option<(ShaderManager, NativeVertexArray)
         gl.enable_vertex_attrib_array(1);
         gl.vertex_attrib_pointer_f32(1, 2, glow::FLOAT, false, 16, 8);
 
-        return Some((manager, vao));
+        Some((manager, vao))
     }
 }
 
@@ -98,9 +100,8 @@ pub fn render_pass(canvas: &BrushCanvas, area: &gtk::GLArea) -> glib::Propagatio
 
         // Save default FBO
         let default_fbo_id = gl.get_parameter_i32(glow::FRAMEBUFFER_BINDING) as u32;
-        let default_fbo = NativeFramebuffer {
-            0: NonZero::new(default_fbo_id).expect("default_fbo shouldn't be 0"),
-        };
+        let default_fbo =
+            NativeFramebuffer(NonZero::new(default_fbo_id).expect("default_fbo shouldn't be 0"));
 
         gl.bind_vertex_array(Some(*vao));
 
@@ -126,8 +127,8 @@ pub fn render_pass(canvas: &BrushCanvas, area: &gtk::GLArea) -> glib::Propagatio
             &mut shaders,
             &root_mvp,
             root_fbo.framebuffer,
-            pw as i32,
-            ph as i32,
+            pw,
+            ph,
         );
 
         // Composite to camera
@@ -151,7 +152,7 @@ pub fn render_pass(canvas: &BrushCanvas, area: &gtk::GLArea) -> glib::Propagatio
             &camera_mvp,
         );
 
-        composite_root_buffer(gl, &root_fbo, &mut shaders, &camera_mvp);
+        composite_root_buffer(gl, root_fbo, &mut shaders, &camera_mvp);
 
         // Clean up state
         gl.disable(glow::BLEND);
@@ -181,28 +182,32 @@ unsafe fn render_layer_tree(
 
         match layer {
             Layer::Pixel(_) => {
-                let buffer = get_or_create_buffer(cache, gl, &layer);
+                let buffer = get_or_create_buffer(cache, gl, layer);
 
                 if layer.is_dirty() {
                     gl.bind_texture(glow::TEXTURE_2D, Some(buffer.texture));
 
-                    unsafe {
-                        gl.tex_sub_image_2d(
-                            glow::TEXTURE_2D,
-                            0,
-                            0,
-                            0,
-                            layer.width() as i32,
-                            layer.height() as i32,
-                            glow::RGBA,
-                            glow::UNSIGNED_BYTE,
-                            glow::PixelUnpackData::Slice(layer.pixel_data()),
-                        );
+                    if let Some(colors) = layer.pixel_data() {
+                        let btyes = bytemuck::cast_slice(colors);
+
+                        unsafe {
+                            gl.tex_sub_image_2d(
+                                glow::TEXTURE_2D,
+                                0,
+                                0,
+                                0,
+                                layer.width() as i32,
+                                layer.height() as i32,
+                                glow::RGBA,
+                                glow::FLOAT,
+                                glow::PixelUnpackData::Slice(Some(btyes)),
+                            );
+                        }
+                        layer.set_dirty(false); // Reset the flag
                     }
-                    layer.set_dirty(false); // Reset the flag
                 }
 
-                composite_buffer(gl, &buffer, &layer, shaders, parent_mvp);
+                composite_buffer(gl, &buffer, layer, shaders, parent_mvp);
 
                 // gl.bind_framebuffer(glow::FRAMEBUFFER, parent_fbo);
             }
@@ -284,11 +289,11 @@ pub fn get_or_create_buffer(
             layer.y(),
             layer.width(),
             layer.height(),
-            layer.pixel_data(),
+            layer.pixel_data().map(|v| &**v),
         )
     });
 
-    return buffer.clone();
+    *buffer
 }
 
 pub unsafe fn composite_buffer(
@@ -317,6 +322,9 @@ pub unsafe fn composite_buffer(
     }
     if let Some(loc) = shaders.layer.get_uniform(gl, "u_flip_y") {
         gl.uniform_1_f32(Some(&loc), 1.0); // Static textures usually don't need flipping
+    }
+    if let Some(loc) = shaders.layer.get_uniform(gl, "u_should_convert") {
+        gl.uniform_1_u32(Some(&loc), 0); // Static textures usually don't need flipping
     }
 
     gl.enable(glow::BLEND);
@@ -351,6 +359,9 @@ pub unsafe fn composite_root_buffer(
     }
     if let Some(loc) = shaders.layer.get_uniform(gl, "u_flip_y") {
         gl.uniform_1_f32(Some(&loc), 0.0); // Static textures usually don't need flipping
+    }
+    if let Some(loc) = shaders.layer.get_uniform(gl, "u_should_convert") {
+        gl.uniform_1_u32(Some(&loc), 1); // Static textures usually don't need flipping
     }
 
     gl.enable(glow::BLEND);
@@ -404,7 +415,7 @@ pub unsafe fn draw_checkerboard(
         gl.uniform_matrix_4_f32_slice(Some(&loc), false, &final_mvp.to_cols_array());
     }
     if let Some(loc) = shaders.background.get_uniform(gl, "u_canvas_size") {
-        gl.uniform_2_f32(Some(&loc), canvas_w as f32, canvas_h as f32);
+        gl.uniform_2_f32(Some(&loc), canvas_w, canvas_h);
     }
     if let Some(loc) = shaders.background.get_uniform(gl, "u_zoom") {
         gl.uniform_1_f32(Some(&loc), zoom);

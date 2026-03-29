@@ -104,10 +104,8 @@ impl BrushProject {
         let layer = self.find_layer(uuid)?.clone();
         if let Some(parent) = self.find_parent_mut(uuid) {
             parent.remove_child(&layer);
-        } else {
-            if let Some(idx) = self.layers.iter().position(|l| l.id() == uuid) {
-                self.layers.remove(idx);
-            }
+        } else if let Some(idx) = self.layers.iter().position(|l| l.id() == uuid) {
+            self.layers.remove(idx);
         }
 
         Some(())
@@ -134,19 +132,17 @@ impl BrushProject {
                     }
                 }
             }
-        } else {
-            if let Some(idx) = self.layers.iter().position(|l| l.id() == layer.id()) {
-                self.layers.remove(idx);
-                widget_cache.remove(&layer.id());
-            }
+        } else if let Some(idx) = self.layers.iter().position(|l| l.id() == layer.id()) {
+            self.layers.remove(idx);
+            widget_cache.remove(&layer.id());
         }
         // Add on new position
         if let Some(parent_id) = new_parent {
             if let Some(parent) = self.find_layer_mut(parent_id) {
                 parent.append(index, layer.clone());
-                if let Some(widget) = widget_cache.get(&parent_id) {
-                    if let Some(item) = widget.upgrade() {
-                        item.reveal();
+                if let Some(entry) = widget_cache.get(&parent_id) {
+                    if let Some(widget) = entry.upgrade() {
+                        widget.reveal();
                     }
                 }
             }

@@ -124,6 +124,7 @@ impl BrushWindow {
             editor.obj().set_property("show_editor", true.to_value());
             editor.obj().set_property("show_toolbox", true.to_value());
             stack.set_visible_child_name("editor");
+            editor.obj().release_focus();
         }
     }
 }

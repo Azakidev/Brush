@@ -59,6 +59,6 @@ fn save_layers(layers: &Vec<Layer>) {
 }
 
 #[allow(dead_code)]
-fn save_pixel_data(_id: Uuid, _pixels: &[u8]) {
+fn save_pixel_data(_id: Uuid, _pixels: &Vec<f32>) {
     todo!();
 }

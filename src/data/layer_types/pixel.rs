@@ -24,8 +24,8 @@ use crate::data::layer::LayerData;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PixelData {
-    #[serde(skip_serializing)]
-    pub pixels: Vec<u8>,
+    #[serde(skip_serializing, skip_deserializing)]
+    pub pixels: Vec<f32>,
     pub color_space: String, // TODO: Replace with enum
 
     pub x: i32,
@@ -38,7 +38,7 @@ impl LayerData for PixelData {}
 
 #[allow(dead_code)]
 impl PixelData {
-    pub fn new(pixels: Vec<u8>, color_space: String, width: u32, height: u32) -> Self {
+    pub fn new(pixels: Vec<f32>, color_space: String, width: u32, height: u32) -> Self {
         Self {
             pixels,
             color_space,
@@ -52,6 +52,6 @@ impl PixelData {
 
     pub fn resize(&mut self, width: u32, height: u32) {
         let len = (width * height * 4) as usize;
-        self.pixels.resize(len, 0u8);
+        self.pixels.resize(len, 0f32);
     }
 }

@@ -18,8 +18,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-#[derive(Debug, PartialEq, Clone)]
-#[allow(dead_code)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub enum BrushTool {
     Move,
     Brush,

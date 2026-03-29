@@ -21,13 +21,13 @@
 use color::{Oklab, OpaqueColor, Rgba8};
 use gtk::gdk;
 
-pub fn oklab_to_rgba(lab: OpaqueColor<Oklab>) -> gdk::RGBA {
-    let srgb: Rgba8 = lab.to_rgba8(); 
-    
+pub fn oklab_to_rgba(lab: &OpaqueColor<Oklab>) -> gdk::RGBA {
+    let srgb: Rgba8 = lab.to_rgba8();
+
     gdk::RGBA::new(
         srgb.r as f32 / 255.0,
         srgb.g as f32 / 255.0,
         srgb.b as f32 / 255.0,
-        1.0
+        1.0,
     )
 }

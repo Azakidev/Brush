@@ -37,7 +37,7 @@ impl LayerBuffer {
         y: i32,
         width: u32,
         height: u32,
-        data: Option<&[u8]>,
+        data: Option<&[f32]>,
     ) -> Self {
         let texture = gl.create_texture().unwrap();
         gl.bind_texture(glow::TEXTURE_2D, Some(texture));
@@ -54,17 +54,33 @@ impl LayerBuffer {
             glow::NEAREST as i32,
         );
 
-        gl.tex_image_2d(
-            glow::TEXTURE_2D,
-            0,
-            glow::RGBA as i32,
-            width as i32,
-            height as i32,
-            0,
-            glow::RGBA,
-            glow::UNSIGNED_BYTE,
-            glow::PixelUnpackData::Slice(data),
-        );
+        if let Some(oklab) = data {
+            let bytes = bytemuck::cast_slice(oklab);
+
+            gl.tex_image_2d(
+                glow::TEXTURE_2D,
+                0,
+                glow::RGBA32F as i32,
+                width as i32,
+                height as i32,
+                0,
+                glow::RGBA,
+                glow::FLOAT,
+                glow::PixelUnpackData::Slice(Some(bytes)),
+            );
+        } else {
+            gl.tex_image_2d(
+                glow::TEXTURE_2D,
+                0,
+                glow::RGBA32F as i32,
+                width as i32,
+                height as i32,
+                0,
+                glow::RGBA,
+                glow::FLOAT,
+                glow::PixelUnpackData::Slice(None),
+            );
+        };
 
         let framebuffer = gl.create_framebuffer().unwrap();
         gl.bind_framebuffer(glow::FRAMEBUFFER, Some(framebuffer));

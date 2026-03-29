@@ -11,11 +11,12 @@ gettext-rs = { version = "0.7", features = ["gettext-system"] }
 gtk = { version = "0.11", package = "gtk4", features = ["gnome_49"] }
 
 # Utils
-color = { version = "0.3" }
+color = { version = "0.3", features = ["bytemuck"]}
 uuid = { version = "1.22", features = ["v4"] }
 strum = { version = "0.28" }
 strum_macros = { version = "0.28" }
 struct_iterable = { version = "0.1" }
+rayon = { version = "1.11" }
 
 # Serde
 serde = { version = "1.0", features = ["derive"] }

@@ -18,27 +18,23 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-use adw::{TabPage, prelude::{GtkWindowExt, RangeExt, WidgetExt}, subclass::prelude::*};
+use adw::{
+    prelude::{GtkWindowExt, RangeExt, WidgetExt},
+    subclass::prelude::*,
+};
 use gtk::{
-    gdk, gio,
-    glib::{
-        self, clone,
-        object::{Cast, ObjectExt},
-        property::PropertySet,
-        types::StaticType,
-        variant::ToVariant,
-        VariantTy, WeakRef,
-    },
-    prelude::BoxExt,
+    gdk, gio, glib::{
+        self, VariantTy, clone, object::{Cast, ObjectExt}, property::PropertySet, types::StaticType, variant::ToVariant
+    }, prelude::BoxExt
 };
 use std::{
     cell::{Cell, RefCell},
     collections::HashMap,
+    ops::Sub,
     rc::Rc,
     str::FromStr,
 };
 use uuid::Uuid;
-use std::ops::Sub;
 
 use crate::{
     components::{
@@ -53,6 +49,7 @@ use crate::{
 
 mod imp {
 
+    use gtk::glib::WeakRef;
 
     use super::*;
 
@@ -97,7 +94,7 @@ mod imp {
         // State, stored in the editor content but needs to be referenced by UI
         pub editor_state: Rc<RefCell<BrushEditorState>>,
         pub current_project: Rc<RefCell<BrushProject>>,
-        pub layer_widgets: Rc<RefCell<HashMap<Uuid, WeakRef<BrushLayerItem>>>>,
+        pub layer_widgets: RefCell<HashMap<Uuid, WeakRef<BrushLayerItem>>>,
         pub current_layer: Rc<RefCell<Option<Uuid>>>,
         pub current_zoom: Rc<Cell<f32>>,
         pub current_rotation: Rc<Cell<f32>>,
@@ -149,8 +146,8 @@ mod imp {
             klass.install_action("editor.swap-colors", None, |editor, _, _| {
                 editor.imp().editor_state.borrow().swap_colors();
                 let state = editor.imp().editor_state.borrow();
-                let primary_color = oklab_to_rgba(state.primary_color.clone().into_inner());
-                let secondary_color = oklab_to_rgba(state.secondary_color.clone().into_inner());
+                let primary_color = oklab_to_rgba(&state.primary_color.borrow());
+                let secondary_color = oklab_to_rgba(&state.secondary_color.borrow());
 
                 editor.emit_by_name::<()>("primary-changed", &[&primary_color]);
                 editor.emit_by_name::<()>("secondary-changed", &[&secondary_color]);
@@ -165,16 +162,16 @@ mod imp {
             });
 
             klass.install_action("editor.new-pixel", None, |editor, _, _| {
-                if let Some(tab) = editor.imp().tab_view.selected_page() {
-                    let _ = tab.child().activate_action("canvas.new-pixel", None);
-                    editor.sync_tab(tab);
+                if let Some(tab) = editor.current_page() {
+                    let _ = tab.activate_action("canvas.new-pixel", None);
+                    editor.sync_project(&tab);
                 }
             });
 
             klass.install_action("editor.new-group", None, |editor, _, _| {
-                if let Some(tab) = editor.imp().tab_view.selected_page() {
-                    let _ = tab.child().activate_action("canvas.new-group", None);
-                    editor.sync_tab(tab);
+                if let Some(tab) = editor.current_page() {
+                    let _ = tab.activate_action("canvas.new-group", None);
+                    editor.sync_project(&tab);
                 }
             });
 
@@ -185,7 +182,7 @@ mod imp {
                     if let Some(var) = arg {
                         let value = var.to_string(); // 'UUID'
                         let id = value.get(1..value.len().sub(1)).unwrap(); // Remove quotes
-                        if let Ok(id) = Uuid::from_str(&id) {
+                        if let Ok(id) = Uuid::from_str(id) {
                             editor.activate_layer(id);
                         }
                     }
@@ -196,46 +193,39 @@ mod imp {
                 "editor.set-layer-opacity",
                 Some(VariantTy::DOUBLE),
                 |editor, _, arg| {
-                if let Some(tab) = editor.imp().tab_view.selected_page() {
-                    let _ = tab.child().activate_action("canvas.set-layer-opacity", arg);
-                }
-                }
+                    if let Some(tab) = editor.current_page() {
+                        let _ = tab.activate_action("canvas.set-layer-opacity", arg);
+                        editor.sync_project(&tab);
+                    }
+                },
             );
 
             klass.install_action("editor.delete-layer", None, |editor, _, _| {
-                if let Some(tab) = editor.imp().tab_view.selected_page() {
-                    let _ = tab.child().activate_action("canvas.remove-layer", None);
-                    editor.sync_tab(tab);
+                if let Some(tab) = editor.current_page() {
+                    let _ = tab.activate_action("canvas.remove-layer", None);
+                    editor.clear_layer_tree();
+                    editor.sync_project(&tab);
                 }
             });
 
             klass.install_action("editor.move-layer-up", None, |editor, _, _| {
-                if let Some(tab) = editor.imp().tab_view.selected_page() {
-                    let _ = tab.child().activate_action("canvas.move-layer-up", None);
-                    editor.sync_tab(tab);
+                if let Some(tab) = editor.current_page() {
+                    let _ = tab.activate_action("canvas.move-layer-up", None);
+                    editor.clear_layer_tree();
+                    editor.sync_project(&tab);
                 }
             });
 
             klass.install_action("editor.move-layer-down", None, |editor, _, _| {
-                if let Some(tab) = editor.imp().tab_view.selected_page() {
-                    let _ = tab.child().activate_action("canvas.move-layer-down", None);
-                    editor.sync_tab(tab);
-                }
-            });
-
-            klass.install_action("editor.delete-layer", None, |editor, _, _| {
-                if let Some(tab) = editor.imp().tab_view.selected_page() {
-                    let _ = tab.child().activate_action("canvas.remove-layer", None);
-                    editor.sync_tab(tab);
+                if let Some(tab) = editor.current_page() {
+                    let _ = tab.activate_action("canvas.move-layer-down", None);
+                    editor.clear_layer_tree();
+                    editor.sync_project(&tab);
                 }
             });
 
             klass.install_action("editor.cancel", None, |editor, _, _| {
-                if let Some(root) = editor.root() {
-                    if let Some(window) = root.dynamic_cast_ref::<gtk::Window>() {
-                        window.set_focus(None::<&gtk::Widget>);
-                    }
-                };
+                editor.release_focus();
             });
 
             klass.install_property_action("editor.change-tool", "active_tool");
@@ -303,6 +293,7 @@ mod imp {
 
                             let child = page.child();
                             if let Ok(canvas_tab) = child.downcast::<BrushCanvas>() {
+                                obj.obj().clear_layer_tree();
                                 obj.obj().sync_project(&canvas_tab);
                             }
                         }
@@ -333,8 +324,8 @@ mod imp {
             // Initial UI sync
             {
                 let state = self.editor_state.borrow();
-                let primary_color = oklab_to_rgba(state.primary_color.clone().into_inner());
-                let secondary_color = oklab_to_rgba(state.secondary_color.clone().into_inner());
+                let primary_color = oklab_to_rgba(&state.primary_color.borrow());
+                let secondary_color = oklab_to_rgba(&state.secondary_color.borrow());
 
                 primary.set_color(primary_color);
                 secondary.set_color(secondary_color);
@@ -443,79 +434,89 @@ impl BrushEditor {
         let project = imp.current_project.borrow();
         let layer_widgets = imp.layer_widgets.borrow();
 
-        let page = imp
-            .tab_view
-            .selected_page()
-            .expect("Can't select a layer without being in a tab")
-            .child()
-            .downcast::<BrushCanvas>()
-            .expect("There's no other option for a child of the tab view");
-
-        if let Some(old_id) = imp.current_layer.borrow().clone() {
+        if let Some(old_id) = *imp.current_layer.borrow() {
             if let Some(old_layer) = project.find_layer(old_id) {
-                if let Some(old_widget) = layer_widgets.get(&old_id) {
-                    if let Some(widget) = old_widget.upgrade() {
-                        widget.update(&id, old_layer)
+                if let Some(entry) = layer_widgets.get(&old_id) {
+                    if let Some(widget) = entry.upgrade() {
+                        widget.update(Some(id), old_layer)
                     }
                 }
             }
         }
 
         imp.current_layer.set(Some(id));
-        page.imp().active_layer.set(Some(id));
+
+        if let Some(canvas) = self.current_page() {
+            canvas.imp().active_layer.set(Some(id));
+        }
 
         if let Some(new_layer) = project.find_layer(id) {
-            if let Some(new_widget) = layer_widgets.get(&id) {
-                if let Some(widget) = new_widget.upgrade() {
-                    widget.update(&id, new_layer)
+            if let Some(entry) = layer_widgets.get(&id) {
+                if let Some(widget) = entry.upgrade() {
+                    widget.update(Some(id), new_layer)
                 }
             }
         }
     }
 
-    fn sync_tab(&self, page: TabPage) {
-        let child = page.child();
-        if let Ok(canvas_tab) = child.downcast::<BrushCanvas>() {
-            self.sync_project(&canvas_tab);
-        }
-    }
+    fn sync_project(&self, canvas: &BrushCanvas) {
+        let canvas_project = canvas.project_context();
+        let project = canvas_project.borrow();
 
-    fn sync_project(&self, tab: &BrushCanvas) {
-        let project = tab.project_context();
-        let layer_widgets = tab.widget_cache();
+        let zoom = canvas.zoom();
+        let rotation = canvas.rotation();
 
-        let project_borrow = project.borrow();
-        let layer_borrow = layer_widgets.borrow();
-
-        let zoom = tab.zoom();
-        let rotation = tab.rotation();
-
-        if let Some(selected_layer) = tab.selected_layer() {
+        if let Some(selected_layer) = canvas.selected_layer() {
             self.imp().current_layer.set(Some(selected_layer));
         }
 
-        self.imp().current_project.set(project_borrow.clone());
-        self.imp().layer_widgets.set(layer_borrow.clone());
+        self.imp().current_project.set(project.clone());
 
         self.imp().current_zoom.set(zoom);
         self.imp().current_rotation.set(rotation);
-        self.sync_layers_panel();
+        self.sync_layers_panel(&project, canvas);
     }
 
-    fn sync_layers_panel(&self) {
-        let project = self.imp().current_project.borrow();
+    fn sync_layers_panel(&self, project: &BrushProject, canvas: &BrushCanvas) {
         let selected_layer = self.imp().current_layer.borrow();
         let layers_box = self.imp().layer_tree.get().imp().tree.get();
-        let mut widget_cache = self.imp().layer_widgets.borrow_mut();
+        let mut cache = canvas.imp().layer_widgets.borrow_mut();
+
+        let mut layers: Vec<BrushLayerItem> = Vec::new();
+
+        for layer in &project.layers {
+            let item = BrushLayerItem::new(layer, *selected_layer, &mut cache);
+            layers.push(item);
+        }
 
         while let Some(child) = layers_box.first_child() {
             layers_box.remove(&child);
         }
 
-        for layer in &project.layers {
-            let item = BrushLayerItem::new(layer, &selected_layer, &mut widget_cache);
+        for item in layers {
             layers_box.append(&item);
         }
+
+        self.imp().layer_widgets.replace(cache.clone());
+    }
+
+    fn clear_layer_tree(&self) {
+        let layers_box = self.imp().layer_tree.get().imp().tree.get();
+
+        while let Some(child) = layers_box.first_child() {
+            layers_box.remove(&child);
+        }
+    }
+
+    fn current_page(&self) -> Option<BrushCanvas> {
+        if let Some(tab) = self.imp().tab_view.selected_page() {
+            let child = tab.child();
+            if let Ok(canvas_tab) = child.downcast::<BrushCanvas>() {
+                return Some(canvas_tab);
+            }
+        }
+
+        None
     }
 
     fn setup_accels(&self) {
@@ -663,5 +664,13 @@ impl BrushEditor {
         let tab_page = self.new_document();
 
         tab_view.set_selected_page(&tab_page);
+    }
+
+    pub fn release_focus(&self) {
+        if let Some(root) = self.root() {
+            if let Some(window) = root.dynamic_cast_ref::<gtk::Window>() {
+                window.set_focus(None::<&gtk::Widget>);
+            }
+        };
     }
 }

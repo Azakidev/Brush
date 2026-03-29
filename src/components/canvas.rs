@@ -22,10 +22,11 @@ use adw::{prelude::*, subclass::prelude::*};
 use glow::{Context, NativeVertexArray};
 use gtk::{
     gdk,
-    glib::{self, clone, VariantTy, WeakRef},
+    glib::{self, VariantTy, WeakRef, clone},
 };
 use libloading::Library;
 
+use glow::HasContext;
 use std::{
     cell::{Cell, OnceCell, RefCell},
     collections::HashMap,
@@ -53,7 +54,7 @@ use crate::{
 
 mod imp {
 
-    use glow::HasContext;
+    use gtk::glib::WeakRef;
 
     use super::*;
 
@@ -132,7 +133,7 @@ mod imp {
                     }
                 },
             );
-            
+
             klass.install_action(
                 "canvas.set-layer-opacity",
                 Some(VariantTy::DOUBLE),
@@ -142,7 +143,7 @@ mod imp {
                             canvas.set_layer_opacity(val as f32);
                         }
                     }
-                }
+                },
             );
 
             klass.install_action("canvas.zoom-out", None, move |content, _, _| {
@@ -321,12 +322,12 @@ impl BrushCanvas {
     }
 
     // Query
-    pub fn project_context(&self) -> Rc<RefCell<BrushProject>> {
-        Rc::new(self.imp().project.clone())
+    pub fn project_context(&self) -> RefCell<BrushProject> {
+        self.imp().project.clone()
     }
 
-    pub fn widget_cache(&self) -> Rc<RefCell<HashMap<Uuid, WeakRef<BrushLayerItem>>>> {
-        Rc::new(self.imp().layer_widgets.clone())
+    pub fn widget_cache(&self) -> RefCell<HashMap<Uuid, WeakRef<BrushLayerItem>>> {
+        self.imp().layer_widgets.clone()
     }
 
     pub fn selected_layer(&self) -> Option<Uuid> {
@@ -696,13 +697,15 @@ impl BrushCanvas {
     }
 
     pub fn set_layer_opacity(&self, opacity: f32) {
+        let imp = self.imp();
+        let mut project = imp.project.borrow_mut();
+
         if let Some(active_id) = self.imp().active_layer.get() {
-            let mut project = self.imp().project.borrow_mut();
             if let Some(active_layer) = project.find_layer_mut(active_id) {
                 active_layer.set_opacity(opacity);
             }
         }
-        self.imp().canvas.queue_draw();
+        imp.canvas.queue_draw();
     }
 
     // Viewport control
@@ -1092,10 +1095,9 @@ impl BrushCanvas {
         let canv_w = project.width as f32;
         let canv_h = project.height as f32;
 
-        let zoom = imp.zoom.get() as f32;
-        let rotation = imp.rotation.get() as f32; // In radians
+        let zoom = imp.zoom.get();
+        let rotation = imp.rotation.get(); // In radians
         let (pos_x, pos_y) = imp.position.get();
-        let (pos_x, pos_y) = (pos_x as f32, pos_y as f32);
 
         let view =
             glam::Mat4::from_translation(glam::vec3(win_w / 2.0 + pos_x, win_h / 2.0 + pos_y, 0.0))
@@ -1119,13 +1121,7 @@ impl BrushCanvas {
         let base_size = state.brush_size.borrow();
         let base_opacity = state.brush_opacity.borrow();
 
-        let color = state.primary_color.borrow().to_rgba8();
-        let color = [
-            color.r,
-            color.g,
-            color.b,
-            (color.a as f32 * *base_opacity) as u8,
-        ];
+        let color = state.primary_color.borrow().with_alpha(*base_opacity);
 
         // Brush coordinates
         let (px, py) = self.imp().mouse_pos.get();
