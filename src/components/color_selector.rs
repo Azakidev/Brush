@@ -27,12 +27,9 @@ use gtk::{
     glib::{self, clone, object::ObjectExt, value::ToValue, Properties, Variant, VariantTy},
     TemplateChild,
 };
+use std::cell::RefCell;
 
 mod imp {
-
-    use std::cell::RefCell;
-
-    use color::{Hsl, Oklab, OpaqueColor};
 
     use super::*;
 
