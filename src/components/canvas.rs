@@ -22,7 +22,7 @@ use adw::{prelude::*, subclass::prelude::*};
 use glow::{Context, NativeVertexArray};
 use gtk::{
     gdk,
-    glib::{self, VariantTy, WeakRef, clone},
+    glib::{self, clone, VariantTy, WeakRef},
 };
 use libloading::Library;
 
@@ -70,7 +70,7 @@ mod imp {
         pub editor_state: OnceCell<Rc<RefCell<BrushEditorState>>>,
         pub project: RefCell<BrushProject>,
         pub buffer_cache: RefCell<HashMap<Uuid, LayerBuffer>>,
-        pub layer_widgets: RefCell<HashMap<Uuid, WeakRef<BrushLayerItem>>>,
+        pub layer_widget_cache: RefCell<HashMap<Uuid, WeakRef<BrushLayerItem>>>,
         // Gl context
         pub gl_context: OnceCell<Context>,
         pub gl_lib: OnceCell<Library>,
@@ -94,41 +94,41 @@ mod imp {
         fn class_init(klass: &mut Self::Class) {
             klass.bind_template();
 
-            klass.install_action("canvas.zoom-in", None, |content, _, _| {
-                content.zoom_by(0.05f32);
+            klass.install_action("canvas.zoom-in", None, |canvas, _, _| {
+                canvas.zoom_by(0.05f32);
             });
 
-            klass.install_action("canvas.new-pixel", None, |content, _, _| {
-                let layer = content.new_pixel_layer();
-                content.push_layer(layer);
+            klass.install_action("canvas.new-pixel", None, |canvas, _, _| {
+                let layer = canvas.new_pixel_layer();
+                canvas.push_layer(layer);
             });
 
-            klass.install_action("canvas.new-group", None, |content, _, _| {
-                let layer = content.new_group_layer();
-                content.push_layer(layer);
+            klass.install_action("canvas.new-group", None, |canvas, _, _| {
+                let layer = canvas.new_group_layer();
+                canvas.push_layer(layer);
             });
 
-            klass.install_action("canvas.remove-layer", None, |content, _, _| {
-                content.remove_layer();
+            klass.install_action("canvas.remove-layer", None, |canvas, _, _| {
+                canvas.remove_layer();
             });
 
-            klass.install_action("canvas.move-layer-up", None, |content, _, _| {
-                content.move_layer_up();
+            klass.install_action("canvas.move-layer-up", None, |canvas, _, _| {
+                canvas.move_layer_up();
             });
 
-            klass.install_action("canvas.move-layer-down", None, |content, _, _| {
-                content.move_layer_down();
+            klass.install_action("canvas.move-layer-down", None, |canvas, _, _| {
+                canvas.move_layer_down();
             });
 
             klass.install_action(
                 "canvas.rename-layer",
                 Some(VariantTy::STRING),
-                move |content, _, arg| {
+                move |canvas, _, arg| {
                     if let Some(var) = arg {
                         let value = var.to_string(); // 'Name'
                         let name = value.get(1..value.len().sub(1)).unwrap(); // Remove quotes
-                        if let Some(active_layer) = content.imp().active_layer.get() {
-                            content.rename_layer(active_layer, name.to_string());
+                        if let Some(active_layer) = canvas.imp().active_layer.get() {
+                            canvas.rename_layer(active_layer, name.to_string());
                         }
                     }
                 },
@@ -146,46 +146,46 @@ mod imp {
                 },
             );
 
-            klass.install_action("canvas.zoom-out", None, move |content, _, _| {
-                content.zoom_by(-0.05f32);
+            klass.install_action("canvas.zoom-out", None, move |canvas, _, _| {
+                canvas.zoom_by(-0.05f32);
             });
 
-            klass.install_action("canvas.zoom-to-fit", None, move |content, _, _| {
-                content.zoom_to_fit();
+            klass.install_action("canvas.zoom-to-fit", None, move |canvas, _, _| {
+                canvas.zoom_to_fit();
             });
 
-            klass.install_action("canvas.pan-up", None, move |content, _, _| {
-                content.move_by(0f32, -20f32);
+            klass.install_action("canvas.pan-up", None, move |canvas, _, _| {
+                canvas.move_by(0f32, -20f32);
             });
 
-            klass.install_action("canvas.pan-down", None, move |content, _, _| {
-                content.move_by(0f32, 20f32);
+            klass.install_action("canvas.pan-down", None, move |canvas, _, _| {
+                canvas.move_by(0f32, 20f32);
             });
 
-            klass.install_action("canvas.pan-right", None, move |content, _, _| {
-                content.move_by(20f32, 0f32);
+            klass.install_action("canvas.pan-right", None, move |canvas, _, _| {
+                canvas.move_by(20f32, 0f32);
             });
 
-            klass.install_action("canvas.pan-left", None, move |content, _, _| {
-                content.move_by(-20f32, 0f32);
+            klass.install_action("canvas.pan-left", None, move |canvas, _, _| {
+                canvas.move_by(-20f32, 0f32);
             });
 
-            klass.install_action("canvas.rotate-right", None, move |content, _, _| {
-                content.rotate_by(PI / 5f32);
+            klass.install_action("canvas.rotate-right", None, move |canvas, _, _| {
+                canvas.rotate_by(PI / 5f32);
             });
 
-            klass.install_action("canvas.rotate-left", None, move |content, _, _| {
-                content.rotate_by(PI / -5f32);
+            klass.install_action("canvas.rotate-left", None, move |canvas, _, _| {
+                canvas.rotate_by(PI / -5f32);
             });
 
-            klass.install_action("canvas.rotate-reset", None, move |content, _, _| {
-                content.rotate_to(0f32);
+            klass.install_action("canvas.rotate-reset", None, move |canvas, _, _| {
+                canvas.rotate_to(0f32);
             });
 
-            klass.install_action("canvas.print-state", None, move |content, _, _| {
+            klass.install_action("canvas.print-state", None, move |canvas, _, _| {
                 println!(
                     "Contents: {}",
-                    serde_json::to_string(&content.imp().project).unwrap()
+                    serde_json::to_string(&canvas.imp().project).unwrap()
                 )
             });
         }
@@ -327,7 +327,7 @@ impl BrushCanvas {
     }
 
     pub fn widget_cache(&self) -> RefCell<HashMap<Uuid, WeakRef<BrushLayerItem>>> {
-        self.imp().layer_widgets.clone()
+        self.imp().layer_widget_cache.clone()
     }
 
     pub fn selected_layer(&self) -> Option<Uuid> {
@@ -359,57 +359,70 @@ impl BrushCanvas {
     }
 
     pub fn push_layer(&self, layer: Layer) {
-        let mut project = self.imp().project.borrow_mut();
+        {
+            let mut project = self.imp().project.borrow_mut();
 
-        if let Some(active_id) = self.imp().active_layer.get() {
-            if let Some(active_layer) = project.clone().find_layer_mut(active_id) {
-                // If the active layer has children, append it to the layer
-                if let Some(children) = active_layer.children() {
-                    let idx = children
-                        .iter()
-                        .position(|r| r.id() == active_layer.id())
-                        .unwrap_or(0);
-
-                    if let Some(a_layer) = project.find_layer_mut(active_layer.id()) {
-                        a_layer.append(idx, layer.clone());
-                    }
-                // If the parent of the active layer has children, append it to the parent
-                } else if let Some(parent) = project.find_parent_mut(active_id) {
-                    if let Some(children) = parent.children() {
+            if let Some(active_id) = self.imp().active_layer.get() {
+                if let Some(active_layer) = project.clone().find_layer_mut(active_id) {
+                    // If the active layer has children, append it to the layer
+                    if let Some(children) = active_layer.children() {
                         let idx = children
                             .iter()
                             .position(|r| r.id() == active_layer.id())
                             .unwrap_or(0);
-                        parent.append(idx, layer.clone());
+
+                        if let Some(a_layer) = project.find_layer_mut(active_layer.id()) {
+                            a_layer.append(idx, layer.clone());
+                        }
+                        // If the parent of the active layer has children, append it to the parent
+                    } else if let Some(parent) = project.find_parent_mut(active_id) {
+                        if let Some(children) = parent.children() {
+                            let idx = children
+                                .iter()
+                                .position(|r| r.id() == active_layer.id())
+                                .unwrap_or(0);
+                            parent.append(idx, layer.clone());
+                        }
+                        // If if doesn't have a parent, append it to the project in position
+                    } else {
+                        let idx = project
+                            .layers
+                            .iter()
+                            .position(|r| r.id() == active_layer.id())
+                            .unwrap_or(0);
+                        project.layers.insert(idx, layer.clone());
                     }
-                // If if doesn't have a parent, append it to the project in position
-                } else {
-                    let idx = project
-                        .layers
-                        .iter()
-                        .position(|r| r.id() == active_layer.id())
-                        .unwrap_or(0);
-                    project.layers.insert(idx, layer.clone());
                 }
+                //If there's no active layer, push it to the beginning
+            } else {
+                project.layers.push(layer.clone());
             }
-        //If there's no active layer, push it to the beginning
-        } else {
-            project.layers.push(layer.clone());
         }
+
+        let project = self.imp().project.borrow();
+        let mut widget_cache = self.imp().layer_widget_cache.borrow_mut();
+        self.remove_stale_widgets(&project, layer.id(), &mut widget_cache);
+
         let _ = self.activate_action(
             "editor.activate-layer",
             Some(&layer.id().to_string().to_variant()),
         );
+
         self.imp().canvas.queue_draw();
     }
 
     pub fn remove_layer(&self) {
         let imp = self.imp();
         let mut project = imp.project.borrow_mut();
-        let mut widget_cache = imp.layer_widgets.borrow_mut();
+        let mut widget_cache = imp.layer_widget_cache.borrow_mut();
         let mut buffer_cache = imp.buffer_cache.borrow_mut();
 
         if let Some(active_layer) = imp.active_layer.get() {
+            // Remove layer and caches
+            project.remove_layer(active_layer);
+            buffer_cache.remove(&active_layer);
+            self.remove_stale_widgets(&project, active_layer, &mut widget_cache);
+
             // If the active layer's parent...
             if let Some(parent) = project.find_parent(active_layer) {
                 // Is a group...
@@ -457,17 +470,45 @@ impl BrushCanvas {
                     imp.active_layer.set(None);
                 }
             }
-
-            project.remove_layer(active_layer);
-            buffer_cache.remove(&active_layer);
-            widget_cache.remove(&active_layer);
         }
         self.imp().canvas.queue_draw();
     }
 
+    // TODO: Move to project.rs
+    fn remove_stale_widgets(
+        &self,
+        project: &BrushProject,
+        layer: Uuid,
+        mut widget_cache: &mut HashMap<Uuid, WeakRef<BrushLayerItem>>,
+    ) {
+        widget_cache.remove(&layer);
+
+        if let Some(layer) = project.find_layer(layer) {
+            self.remove_stale_children(layer, &mut widget_cache);
+        }
+        if let Some(parent) = project.find_parent(layer) {
+            self.remove_stale_children(parent, &mut widget_cache);
+            self.remove_stale_widgets(&project, parent.id(), &mut widget_cache);
+        }
+    }
+
+    // TODO: Move to project.rs
+    fn remove_stale_children(
+        &self,
+        layer: &Layer,
+        mut widget_cache: &mut HashMap<Uuid, WeakRef<BrushLayerItem>>,
+    ) {
+        if let Some(children) = layer.children() {
+            for child in children {
+                widget_cache.remove(&child.id());
+                self.remove_stale_children(&child, &mut widget_cache);
+            }
+        }
+    }
+
     pub fn move_layer_up(&self) {
         let mut project = self.imp().project.borrow_mut();
-        let mut widget_cache = self.imp().layer_widgets.borrow_mut();
+        let mut widget_cache = self.imp().layer_widget_cache.borrow_mut();
         let mut buf_cache = self.imp().buffer_cache.borrow_mut();
 
         if let Some(active) = self.imp().active_layer.get() {
@@ -490,8 +531,8 @@ impl BrushCanvas {
                                         previous_children.len(),
                                         Some(parent.id()),
                                         Some(previous.id()),
-                                        &mut widget_cache,
                                         &mut buf_cache,
+                                        &mut widget_cache,
                                     )
                                 } else {
                                     project.move_layer(
@@ -499,8 +540,8 @@ impl BrushCanvas {
                                         idx - 1,
                                         Some(parent.id()),
                                         Some(parent.id()),
-                                        &mut widget_cache,
                                         &mut buf_cache,
+                                        &mut widget_cache,
                                     );
                                 }
                             }
@@ -519,8 +560,8 @@ impl BrushCanvas {
                                         idx,
                                         Some(parent.id()),
                                         Some(grandparent.id()),
-                                        &mut widget_cache,
                                         &mut buf_cache,
+                                        &mut widget_cache,
                                     );
                                 }
                             } else {
@@ -536,8 +577,8 @@ impl BrushCanvas {
                                     idx,
                                     Some(parent.id()),
                                     None,
-                                    &mut widget_cache,
                                     &mut buf_cache,
+                                    &mut widget_cache,
                                 )
                             }
                         }
@@ -557,8 +598,8 @@ impl BrushCanvas {
                                     previous_children.len(),
                                     None,
                                     Some(previous.id()),
-                                    &mut widget_cache,
                                     &mut buf_cache,
+                                    &mut widget_cache,
                                 )
                             } else {
                                 project.move_layer(
@@ -566,8 +607,8 @@ impl BrushCanvas {
                                     idx - 1,
                                     None,
                                     None,
-                                    &mut widget_cache,
                                     &mut buf_cache,
+                                    &mut widget_cache,
                                 );
                             }
                         }
@@ -580,7 +621,7 @@ impl BrushCanvas {
 
     pub fn move_layer_down(&self) {
         let mut project = self.imp().project.borrow_mut();
-        let mut widget_cache = self.imp().layer_widgets.borrow_mut();
+        let mut widget_cache = self.imp().layer_widget_cache.borrow_mut();
         let mut buf_cache = self.imp().buffer_cache.borrow_mut();
 
         if let Some(active) = self.imp().active_layer.get() {
@@ -603,8 +644,8 @@ impl BrushCanvas {
                                         0,
                                         Some(parent.id()),
                                         Some(next.id()),
-                                        &mut widget_cache,
                                         &mut buf_cache,
+                                        &mut widget_cache,
                                     )
                                 } else {
                                     project.move_layer(
@@ -612,8 +653,8 @@ impl BrushCanvas {
                                         idx + 1,
                                         Some(parent.id()),
                                         Some(parent.id()),
-                                        &mut widget_cache,
                                         &mut buf_cache,
+                                        &mut widget_cache,
                                     );
                                 }
                             }
@@ -632,8 +673,8 @@ impl BrushCanvas {
                                         idx + 1,
                                         Some(parent.id()),
                                         Some(grandparent.id()),
-                                        &mut widget_cache,
                                         &mut buf_cache,
+                                        &mut widget_cache,
                                     );
                                 }
                             } else {
@@ -649,8 +690,8 @@ impl BrushCanvas {
                                     idx + 1,
                                     Some(parent.id()),
                                     None,
-                                    &mut widget_cache,
                                     &mut buf_cache,
+                                    &mut widget_cache,
                                 )
                             }
                         }
@@ -670,8 +711,8 @@ impl BrushCanvas {
                                     0,
                                     None,
                                     Some(next.id()),
-                                    &mut widget_cache,
                                     &mut buf_cache,
+                                    &mut widget_cache,
                                 )
                             } else {
                                 project.move_layer(
@@ -679,8 +720,8 @@ impl BrushCanvas {
                                     idx + 1,
                                     None,
                                     None,
-                                    &mut widget_cache,
                                     &mut buf_cache,
+                                    &mut widget_cache,
                                 );
                             }
                         }
@@ -693,17 +734,22 @@ impl BrushCanvas {
 
     pub fn rename_layer(&self, uuid: Uuid, new_name: String) {
         let mut project = self.imp().project.borrow_mut();
+        let mut widget_cache = self.imp().layer_widget_cache.borrow_mut();
         project.rename_layer(uuid, new_name);
+
+        self.remove_stale_widgets(&project, uuid, &mut widget_cache);
     }
 
     pub fn set_layer_opacity(&self, opacity: f32) {
         let imp = self.imp();
         let mut project = imp.project.borrow_mut();
+        let mut widget_cache = self.imp().layer_widget_cache.borrow_mut();
 
         if let Some(active_id) = self.imp().active_layer.get() {
             if let Some(active_layer) = project.find_layer_mut(active_id) {
                 active_layer.set_opacity(opacity);
             }
+            self.remove_stale_widgets(&project, active_id, &mut widget_cache);
         }
         imp.canvas.queue_draw();
     }

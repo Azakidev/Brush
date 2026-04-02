@@ -23,9 +23,16 @@ use adw::{
     subclass::prelude::*,
 };
 use gtk::{
-    gdk, gio, glib::{
-        self, VariantTy, clone, object::{Cast, ObjectExt}, property::PropertySet, types::StaticType, variant::ToVariant
-    }, prelude::BoxExt
+    gdk, gio,
+    glib::{
+        self, clone,
+        object::{Cast, ObjectExt},
+        property::PropertySet,
+        types::StaticType,
+        variant::ToVariant,
+        VariantTy,
+    },
+    prelude::BoxExt,
 };
 use std::{
     cell::{Cell, RefCell},
@@ -94,7 +101,7 @@ mod imp {
         // State, stored in the editor content but needs to be referenced by UI
         pub editor_state: Rc<RefCell<BrushEditorState>>,
         pub current_project: Rc<RefCell<BrushProject>>,
-        pub layer_widgets: RefCell<HashMap<Uuid, WeakRef<BrushLayerItem>>>,
+        pub layer_widget_cache: RefCell<HashMap<Uuid, WeakRef<BrushLayerItem>>>,
         pub current_layer: Rc<RefCell<Option<Uuid>>>,
         pub current_zoom: Rc<Cell<f32>>,
         pub current_rotation: Rc<Cell<f32>>,
@@ -203,7 +210,6 @@ mod imp {
             klass.install_action("editor.delete-layer", None, |editor, _, _| {
                 if let Some(tab) = editor.current_page() {
                     let _ = tab.activate_action("canvas.remove-layer", None);
-                    editor.clear_layer_tree();
                     editor.sync_project(&tab);
                 }
             });
@@ -211,7 +217,6 @@ mod imp {
             klass.install_action("editor.move-layer-up", None, |editor, _, _| {
                 if let Some(tab) = editor.current_page() {
                     let _ = tab.activate_action("canvas.move-layer-up", None);
-                    editor.clear_layer_tree();
                     editor.sync_project(&tab);
                 }
             });
@@ -219,7 +224,6 @@ mod imp {
             klass.install_action("editor.move-layer-down", None, |editor, _, _| {
                 if let Some(tab) = editor.current_page() {
                     let _ = tab.activate_action("canvas.move-layer-down", None);
-                    editor.clear_layer_tree();
                     editor.sync_project(&tab);
                 }
             });
@@ -293,7 +297,6 @@ mod imp {
 
                             let child = page.child();
                             if let Ok(canvas_tab) = child.downcast::<BrushCanvas>() {
-                                obj.obj().clear_layer_tree();
                                 obj.obj().sync_project(&canvas_tab);
                             }
                         }
@@ -432,11 +435,11 @@ impl BrushEditor {
     fn activate_layer(&self, id: Uuid) {
         let imp = self.imp();
         let project = imp.current_project.borrow();
-        let layer_widgets = imp.layer_widgets.borrow();
+        let layer_widget_cache = imp.layer_widget_cache.borrow();
 
         if let Some(old_id) = *imp.current_layer.borrow() {
             if let Some(old_layer) = project.find_layer(old_id) {
-                if let Some(entry) = layer_widgets.get(&old_id) {
+                if let Some(entry) = layer_widget_cache.get(&old_id) {
                     if let Some(widget) = entry.upgrade() {
                         widget.update(Some(id), old_layer)
                     }
@@ -445,16 +448,34 @@ impl BrushEditor {
         }
 
         imp.current_layer.set(Some(id));
+        self.update_controls();
 
         if let Some(canvas) = self.current_page() {
             canvas.imp().active_layer.set(Some(id));
         }
 
         if let Some(new_layer) = project.find_layer(id) {
-            if let Some(entry) = layer_widgets.get(&id) {
+            if let Some(entry) = layer_widget_cache.get(&id) {
                 if let Some(widget) = entry.upgrade() {
                     widget.update(Some(id), new_layer)
                 }
+            }
+        }
+    }
+
+    fn update_controls(&self) {
+        let imp = self.imp();
+        let project = imp.current_project.borrow();
+        let layer_tree = imp.layer_tree.imp();
+        // Widgets
+        let opacity_slider = &layer_tree.layer_opacity;
+        // Values
+        if let Some(active_id) = imp.current_layer.borrow().clone() {
+            if let Some(layer) = project.find_layer(active_id) {
+                let opacity = layer.opacity();
+                layer_tree.should_update.set(false);
+                opacity_slider.set_value(opacity as f64);
+                layer_tree.should_update.set(true);
             }
         }
     }
@@ -480,7 +501,7 @@ impl BrushEditor {
     fn sync_layers_panel(&self, project: &BrushProject, canvas: &BrushCanvas) {
         let selected_layer = self.imp().current_layer.borrow();
         let layers_box = self.imp().layer_tree.get().imp().tree.get();
-        let mut cache = canvas.imp().layer_widgets.borrow_mut();
+        let mut cache = canvas.imp().layer_widget_cache.borrow_mut();
 
         let mut layers: Vec<BrushLayerItem> = Vec::new();
 
@@ -497,15 +518,8 @@ impl BrushEditor {
             layers_box.append(&item);
         }
 
-        self.imp().layer_widgets.replace(cache.clone());
-    }
-
-    fn clear_layer_tree(&self) {
-        let layers_box = self.imp().layer_tree.get().imp().tree.get();
-
-        while let Some(child) = layers_box.first_child() {
-            layers_box.remove(&child);
-        }
+        self.imp().layer_widget_cache.replace(cache.clone());
+        self.update_controls();
     }
 
     fn current_page(&self) -> Option<BrushCanvas> {

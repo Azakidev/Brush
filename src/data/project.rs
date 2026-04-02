@@ -117,9 +117,10 @@ impl BrushProject {
         index: usize,
         old_parent: Option<Uuid>,
         new_parent: Option<Uuid>,
-        widget_cache: &mut HashMap<Uuid, WeakRef<BrushLayerItem>>,
         buf_cache: &mut HashMap<Uuid, LayerBuffer>,
+        widget_cache: &mut HashMap<Uuid, WeakRef<BrushLayerItem>>,
     ) {
+        widget_cache.clear();
         // Remove old
         if let Some(parent_id) = old_parent {
             if let Some(parent) = self.find_layer_mut(parent_id) {
@@ -127,14 +128,11 @@ impl BrushProject {
                     if children.iter().any(|l| l.id() == layer.id()) {
                         parent.remove_child(layer); // Force clear group texture
                         buf_cache.remove(&parent.id());
-                        widget_cache.remove(&parent.id());
-                        widget_cache.remove(&layer.id());
                     }
                 }
             }
         } else if let Some(idx) = self.layers.iter().position(|l| l.id() == layer.id()) {
             self.layers.remove(idx);
-            widget_cache.remove(&layer.id());
         }
         // Add on new position
         if let Some(parent_id) = new_parent {

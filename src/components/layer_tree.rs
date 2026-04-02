@@ -18,15 +18,16 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-use adw::subclass::prelude::*;
-use adw::prelude::WidgetExt;
 use adw::prelude::ToVariant;
-use gtk::{TemplateChild, glib};
+use adw::prelude::WidgetExt;
+use adw::subclass::prelude::*;
+use gtk::{glib, TemplateChild};
 
 mod imp {
 
+    use std::{cell::Cell, rc::Rc};
 
-    use gtk::prelude::RangeExt;
+    use gtk::{glib::clone, prelude::RangeExt};
 
     use super::*;
 
@@ -38,6 +39,10 @@ mod imp {
         pub tree: TemplateChild<gtk::Box>,
         #[template_child]
         pub layer_opacity: TemplateChild<gtk::Scale>,
+
+        // Flags
+        pub should_update: Rc<Cell<bool>>,
+        pub compositing_enabled: Rc<Cell<bool>>,
     }
 
     #[glib::object_subclass]
@@ -45,6 +50,14 @@ mod imp {
         const NAME: &'static str = "BrushLayerTree";
         type Type = super::BrushLayerTree;
         type ParentType = gtk::Box;
+
+        fn new() -> Self {
+            Self {
+                should_update: Rc::new(Cell::new(true)),
+                compositing_enabled: Rc::new(Cell::new(true)),
+                ..Default::default()
+            }
+        }
 
         fn class_init(klass: &mut Self::Class) {
             klass.bind_template();
@@ -59,15 +72,18 @@ mod imp {
         fn constructed(&self) {
             self.parent_constructed();
 
-            self.layer_opacity.get().connect_value_changed(
-                    move |s| {
-                        let val = s.value();
-                        let _ = s.activate_action(
-                            "editor.set-layer-opacity",
-                            Some(&val.to_variant()),
-                        );
+            self.layer_opacity.get().connect_value_changed(clone!(
+                #[weak(rename_to = obj)]
+                self,
+                move |s| {
+                    let val = s.value();
+                    let should_update = obj.obj().imp().should_update.get();
+                    if should_update == true {
+                        let _ =
+                            s.activate_action("editor.set-layer-opacity", Some(&val.to_variant()));
                     }
-            );
+                }
+            ));
         }
     }
     impl WidgetImpl for BrushLayerTree {}

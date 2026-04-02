@@ -121,14 +121,13 @@ impl BrushLayerItem {
     ) -> Self {
         if let Some(entry) = cache.get(&layer.id()) {
             if let Some(widget) = entry.upgrade() {
-                println!("Hit");
                 widget.update(selected_layer, layer);
                 return widget.clone();
             } else {
-                println!("Failed to upgrade widget");
+                eprintln!("Failed to upgrade layer item");
+                cache.clear();
             }
         }
-        println!("Miss");
 
         let obj: BrushLayerItem = glib::Object::new();
         let imp = obj.imp();
