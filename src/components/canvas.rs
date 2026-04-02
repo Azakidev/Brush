@@ -401,7 +401,7 @@ impl BrushCanvas {
 
         let project = self.imp().project.borrow();
         let mut widget_cache = self.imp().layer_widget_cache.borrow_mut();
-        self.remove_stale_widgets(&project, layer.id(), &mut widget_cache);
+        project.remove_stale_widgets(layer.id(), &mut widget_cache);
 
         let _ = self.activate_action(
             "editor.activate-layer",
@@ -418,11 +418,6 @@ impl BrushCanvas {
         let mut buffer_cache = imp.buffer_cache.borrow_mut();
 
         if let Some(active_layer) = imp.active_layer.get() {
-            // Remove layer and caches
-            project.remove_layer(active_layer);
-            buffer_cache.remove(&active_layer);
-            self.remove_stale_widgets(&project, active_layer, &mut widget_cache);
-
             // If the active layer's parent...
             if let Some(parent) = project.find_parent(active_layer) {
                 // Is a group...
@@ -470,40 +465,13 @@ impl BrushCanvas {
                     imp.active_layer.set(None);
                 }
             }
+            // Remove layer and caches
+            project.remove_stale_widgets(active_layer, &mut widget_cache);
+            project.remove_layer(active_layer);
+            buffer_cache.remove(&active_layer);
         }
+
         self.imp().canvas.queue_draw();
-    }
-
-    // TODO: Move to project.rs
-    fn remove_stale_widgets(
-        &self,
-        project: &BrushProject,
-        layer: Uuid,
-        mut widget_cache: &mut HashMap<Uuid, WeakRef<BrushLayerItem>>,
-    ) {
-        widget_cache.remove(&layer);
-
-        if let Some(layer) = project.find_layer(layer) {
-            self.remove_stale_children(layer, &mut widget_cache);
-        }
-        if let Some(parent) = project.find_parent(layer) {
-            self.remove_stale_children(parent, &mut widget_cache);
-            self.remove_stale_widgets(&project, parent.id(), &mut widget_cache);
-        }
-    }
-
-    // TODO: Move to project.rs
-    fn remove_stale_children(
-        &self,
-        layer: &Layer,
-        mut widget_cache: &mut HashMap<Uuid, WeakRef<BrushLayerItem>>,
-    ) {
-        if let Some(children) = layer.children() {
-            for child in children {
-                widget_cache.remove(&child.id());
-                self.remove_stale_children(&child, &mut widget_cache);
-            }
-        }
     }
 
     pub fn move_layer_up(&self) {
@@ -737,7 +705,7 @@ impl BrushCanvas {
         let mut widget_cache = self.imp().layer_widget_cache.borrow_mut();
         project.rename_layer(uuid, new_name);
 
-        self.remove_stale_widgets(&project, uuid, &mut widget_cache);
+        project.remove_stale_widgets(uuid, &mut widget_cache);
     }
 
     pub fn set_layer_opacity(&self, opacity: f32) {
@@ -749,7 +717,7 @@ impl BrushCanvas {
             if let Some(active_layer) = project.find_layer_mut(active_id) {
                 active_layer.set_opacity(opacity);
             }
-            self.remove_stale_widgets(&project, active_id, &mut widget_cache);
+            project.remove_stale_widgets(active_id, &mut widget_cache);
         }
         imp.canvas.queue_draw();
     }

@@ -37,7 +37,8 @@ colorChip {
 }
 
 .filled_scale slider {
-    opacity: 0.5;
+    /* opacity: 0.5; */
+    opacity: 0;
     transform: scale(0.3) translateX(-32px);
 }
 
@@ -47,4 +48,8 @@ colorChip {
 
 .subtext {
     font-size: 11px;
+}
+
+.compact button {
+    min-width: 0px;
 }

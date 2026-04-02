@@ -18,16 +18,17 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-use adw::prelude::ToVariant;
-use adw::prelude::WidgetExt;
-use adw::subclass::prelude::*;
-use gtk::{glib, TemplateChild};
+use adw::{
+    prelude::{RangeExt, ToVariant, WidgetExt},
+    subclass::prelude::*,
+};
+use gtk::{
+    glib::{self, clone},
+    TemplateChild,
+};
+use std::{cell::Cell, rc::Rc};
 
 mod imp {
-
-    use std::{cell::Cell, rc::Rc};
-
-    use gtk::{glib::clone, prelude::RangeExt};
 
     use super::*;
 

@@ -149,6 +149,35 @@ impl BrushProject {
         }
     }
 
+    pub fn remove_stale_widgets(
+        &self,
+        layer: Uuid,
+        mut widget_cache: &mut HashMap<Uuid, WeakRef<BrushLayerItem>>,
+    ) {
+        widget_cache.remove(&layer);
+
+        if let Some(layer) = self.find_layer(layer) {
+            self.remove_stale_children(layer, &mut widget_cache);
+        }
+        if let Some(parent) = self.find_parent(layer) {
+            self.remove_stale_children(parent, &mut widget_cache);
+            self.remove_stale_widgets(parent.id(), &mut widget_cache);
+        }
+    }
+
+    pub fn remove_stale_children(
+        &self,
+        layer: &Layer,
+        mut widget_cache: &mut HashMap<Uuid, WeakRef<BrushLayerItem>>,
+    ) {
+        if let Some(children) = layer.children() {
+            for child in children {
+                widget_cache.remove(&child.id());
+                self.remove_stale_children(&child, &mut widget_cache);
+            }
+        }
+    }
+
     pub fn find_parent(&self, target_id: Uuid) -> Option<&Layer> {
         Self::search_parent_recursive(&self.layers, target_id)
     }

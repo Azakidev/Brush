@@ -276,19 +276,7 @@ template $BrushEditor: Box {
                 margin-start: 4;
                 margin-end: 4;
 
-                Box {
-                  height-request: 200;
-
-                  Label {
-                    label: _("Color picker here");
-                    valign: center;
-                    hexpand: true;
-
-                    styles [
-                      "title-2",
-                    ]
-                  }
-                }
+                $BrushColorSelector color_selector {}
 
                 $BrushLayerTree layer_tree {}
               }

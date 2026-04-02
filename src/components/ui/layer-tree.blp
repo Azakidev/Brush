@@ -6,6 +6,12 @@ template $BrushLayerTree: Box {
   margin-top: 4;
   spacing: 4;
 
+  Label {
+    label: _("Opacity");
+    halign: start;
+
+  }
+
   Gtk.Scale layer_opacity {
     orientation: horizontal;
     width-request: 150;

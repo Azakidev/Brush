@@ -30,7 +30,7 @@ use gtk::{
         property::PropertySet,
         types::StaticType,
         variant::ToVariant,
-        VariantTy,
+        VariantTy, WeakRef,
     },
     prelude::BoxExt,
 };
@@ -47,6 +47,7 @@ use crate::{
     components::{
         canvas::BrushCanvas,
         color_chip::BrushColorChip,
+        color_selector::BrushColorSelector,
         layer_item::BrushLayerItem,
         layer_tree::BrushLayerTree,
         utils::{color::oklab_to_rgba, editor_state::BrushEditorState},
@@ -55,8 +56,6 @@ use crate::{
 };
 
 mod imp {
-
-    use gtk::glib::WeakRef;
 
     use super::*;
 
@@ -87,6 +86,8 @@ mod imp {
         primary_chip: TemplateChild<BrushColorChip>,
         #[template_child]
         secondary_chip: TemplateChild<BrushColorChip>,
+        #[template_child]
+        color_selector: TemplateChild<BrushColorSelector>,
         #[template_child]
         pub layer_tree: TemplateChild<BrushLayerTree>,
         #[template_child]
@@ -158,6 +159,17 @@ mod imp {
 
                 editor.emit_by_name::<()>("primary-changed", &[&primary_color]);
                 editor.emit_by_name::<()>("secondary-changed", &[&secondary_color]);
+            });
+
+            klass.install_action("editor.set-color", None, |editor, _, _| {
+                let state = editor.imp().editor_state.borrow();
+                let selector = &editor.imp().color_selector;
+                let color = selector.color();
+
+                state.primary_color.replace(color);
+
+                let rgb = oklab_to_rgba(&color);
+                editor.emit_by_name::<()>("primary-changed", &[&rgb]);
             });
 
             klass.install_action("editor.toggle-editor", None, |editor, _, _| {

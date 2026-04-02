@@ -8,6 +8,7 @@ blueprints = custom_target(
     'components/ui/editor.blp',
     'components/ui/layer-item.blp',
     'components/ui/layer-tree.blp',
+    'components/ui/color-selector.blp',
     'components/ui/shortcuts-dialog.blp',
     'components/ui/welcome.blp',
     'components/ui/window.blp',
