@@ -282,12 +282,10 @@ pub fn get_or_create_buffer(
         .map(|b| b.width != layer.width() || b.height != layer.height())
         .unwrap_or(false);
 
-    if needs_realloc {
-        if let Some(old_buf) = cache.remove(&layer.id()) {
-            unsafe {
-                gl.delete_framebuffer(old_buf.framebuffer);
-                gl.delete_texture(old_buf.texture);
-            }
+    if needs_realloc && let Some(old_buf) = cache.remove(&layer.id()) {
+        unsafe {
+            gl.delete_framebuffer(old_buf.framebuffer);
+            gl.delete_texture(old_buf.texture);
         }
     }
 

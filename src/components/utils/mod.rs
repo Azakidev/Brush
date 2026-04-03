@@ -21,7 +21,7 @@
 // Data models
 pub mod editor_state;
 // Utilities
-pub mod tools;
 pub mod color;
+pub mod tools;
 // Editor
 pub mod renderer;

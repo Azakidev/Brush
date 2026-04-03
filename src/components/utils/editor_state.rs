@@ -33,7 +33,7 @@ pub struct BrushEditorState {
     pub secondary_color: RefCell<OpaqueColor<Hsv>>,
     // Brush
     pub brush_opacity: RefCell<f32>,
-    pub brush_size: RefCell<u32>
+    pub brush_size: RefCell<u32>,
 }
 
 impl Default for BrushEditorState {

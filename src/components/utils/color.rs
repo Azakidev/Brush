@@ -20,18 +20,7 @@
 
 use std::any::TypeId;
 
-use color::{ColorSpace, ColorSpaceLayout, OpaqueColor, Rgba8, Srgb};
-
-pub fn to_rgba(hsv: &OpaqueColor<Hsv>) -> gtk::gdk::RGBA {
-    let srgb: Rgba8 = hsv.to_rgba8();
-
-    gtk::gdk::RGBA::new(
-        srgb.r as f32 / 255.0,
-        srgb.g as f32 / 255.0,
-        srgb.b as f32 / 255.0,
-        1.0,
-    )
-}
+use color::{ColorSpace, ColorSpaceLayout, Hsl, OpaqueColor, Rgba8, Srgb};
 
 #[derive(Clone, Copy, Debug)]
 pub struct Hsv;
@@ -60,6 +49,8 @@ impl ColorSpace for Hsv {
             src
         } else if TypeId::of::<TargetCS>() == TypeId::of::<Srgb>() {
             hsv_to_srgb(src)
+        } else if TypeId::of::<TargetCS>() == TypeId::of::<Hsl>() {
+            hsv_to_hsl(src)
         } else {
             let lin_rgb = Self::to_linear_srgb(src);
             TargetCS::from_linear_srgb(lin_rgb)
@@ -102,10 +93,8 @@ fn srgb_to_hsv(src: [f32; 3]) -> [f32; 3] {
     let min = r.min(g.min(b));
     let delta = max - min;
 
-    // 1. Calculate Value (V)
     let v = max;
 
-    // 2. Calculate Saturation (S)
     let s = if max == 0.0 { 0.0 } else { delta / max };
 
     const EPSILON: f32 = 1e-6;
@@ -126,4 +115,31 @@ fn srgb_to_hsv(src: [f32; 3]) -> [f32; 3] {
     }
 
     [h, s * 100f32, v * 100f32]
+}
+
+fn hsv_to_hsl(hsv: [f32; 3]) -> [f32; 3] {
+    let [h, s_v, v] = hsv;
+    let s_v = s_v * 0.01;
+    let v = v * 0.01;
+
+    let l = v * (1.0 - s_v / 2.0);
+
+    let s_l = if l == 0.0 || l == 1.0 {
+        0.0
+    } else {
+        (v - l) / l.min(1.0 - l)
+    };
+
+    [h, s_l * 100f32, l * 100f32]
+}
+
+pub fn to_rgba(hsv: &OpaqueColor<Hsv>) -> gtk::gdk::RGBA {
+    let srgb: Rgba8 = hsv.to_rgba8();
+
+    gtk::gdk::RGBA::new(
+        srgb.r as f32 / 255.0,
+        srgb.g as f32 / 255.0,
+        srgb.b as f32 / 255.0,
+        1.0,
+    )
 }

@@ -29,7 +29,7 @@ pub enum BlendMode {
 impl BlendMode {
     pub fn name(&self) -> &str {
         match self {
-           Self::Normal => "Normal"
+            Self::Normal => "Normal",
         }
     }
- }
+}

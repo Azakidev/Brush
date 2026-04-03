@@ -21,8 +21,8 @@
 use adw::prelude::*;
 use adw::subclass::prelude::*;
 use gtk::{
-    glib::{self, clone, WeakRef},
     TemplateChild,
+    glib::{self, WeakRef, clone},
 };
 use std::{cell::OnceCell, collections::HashMap, ops::Mul};
 use uuid::Uuid;

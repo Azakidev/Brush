@@ -23,8 +23,8 @@ use adw::subclass::prelude::*;
 use gettextrs::gettext;
 use gtk::{gio, glib};
 
-use crate::config::VERSION;
 use crate::BrushWindow;
+use crate::config::VERSION;
 
 mod imp {
     use super::*;

@@ -25,12 +25,11 @@ use adw::{
 use gtk::{
     gdk, gio,
     glib::{
-        self, clone,
+        self, VariantTy, WeakRef, clone,
         object::{Cast, ObjectExt},
         property::PropertySet,
         types::StaticType,
         variant::ToVariant,
-        VariantTy, WeakRef,
     },
     prelude::BoxExt,
 };
@@ -452,14 +451,12 @@ impl BrushEditor {
         let project = imp.current_project.borrow();
         let layer_widget_cache = imp.layer_widget_cache.borrow();
 
-        if let Some(old_id) = *imp.current_layer.borrow() {
-            if let Some(old_layer) = project.find_layer(old_id) {
-                if let Some(entry) = layer_widget_cache.get(&old_id) {
-                    if let Some(widget) = entry.upgrade() {
-                        widget.update(Some(id), old_layer)
-                    }
-                }
-            }
+        if let Some(old_id) = *imp.current_layer.borrow()
+            && let Some(old_layer) = project.find_layer(old_id)
+            && let Some(entry) = layer_widget_cache.get(&old_id)
+            && let Some(widget) = entry.upgrade()
+        {
+            widget.update(Some(id), old_layer)
         }
 
         imp.current_layer.set(Some(id));
@@ -469,12 +466,11 @@ impl BrushEditor {
             canvas.imp().active_layer.set(Some(id));
         }
 
-        if let Some(new_layer) = project.find_layer(id) {
-            if let Some(entry) = layer_widget_cache.get(&id) {
-                if let Some(widget) = entry.upgrade() {
-                    widget.update(Some(id), new_layer)
-                }
-            }
+        if let Some(new_layer) = project.find_layer(id)
+            && let Some(entry) = layer_widget_cache.get(&id)
+            && let Some(widget) = entry.upgrade()
+        {
+            widget.update(Some(id), new_layer)
         }
     }
 
@@ -485,13 +481,13 @@ impl BrushEditor {
         // Widgets
         let opacity_slider = &layer_tree.layer_opacity;
         // Values
-        if let Some(active_id) = imp.current_layer.borrow().clone() {
-            if let Some(layer) = project.find_layer(active_id) {
-                let opacity = layer.opacity();
-                layer_tree.should_update.set(false);
-                opacity_slider.set_value(opacity as f64);
-                layer_tree.should_update.set(true);
-            }
+        if let Some(active_id) = *imp.current_layer.borrow()
+            && let Some(layer) = project.find_layer(active_id)
+        {
+            let opacity = layer.opacity();
+            layer_tree.should_update.set(false);
+            opacity_slider.set_value(opacity as f64);
+            layer_tree.should_update.set(true);
         }
     }
 
@@ -696,10 +692,10 @@ impl BrushEditor {
     }
 
     pub fn release_focus(&self) {
-        if let Some(root) = self.root() {
-            if let Some(window) = root.dynamic_cast_ref::<gtk::Window>() {
-                window.set_focus(None::<&gtk::Widget>);
-            }
+        if let Some(root) = self.root()
+            && let Some(window) = root.dynamic_cast_ref::<gtk::Window>()
+        {
+            window.set_focus(None::<&gtk::Widget>);
         };
     }
 }

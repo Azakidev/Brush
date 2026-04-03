@@ -23,8 +23,8 @@ use adw::{
     subclass::prelude::*,
 };
 use gtk::{
-    glib::{self, clone},
     TemplateChild,
+    glib::{self, clone},
 };
 use std::{cell::Cell, rc::Rc};
 
@@ -79,7 +79,7 @@ mod imp {
                 move |s| {
                     let val = s.value();
                     let should_update = obj.obj().imp().should_update.get();
-                    if should_update == true {
+                    if should_update {
                         let _ =
                             s.activate_action("editor.set-layer-opacity", Some(&val.to_variant()));
                     }

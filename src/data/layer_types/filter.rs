@@ -20,7 +20,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::data::layer::{LayerData};
+use crate::data::layer::LayerData;
 
 #[allow(dead_code)]
 #[derive(Serialize, Deserialize, Debug, Clone)]

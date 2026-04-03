@@ -22,10 +22,11 @@ use adw::{
     prelude::{RangeExt, WidgetExt},
     subclass::prelude::*,
 };
-use color::OpaqueColor;
+use color::{Hsl, OpaqueColor};
 use gtk::{
-    glib::{self, clone, object::ObjectExt, Properties},
-    TemplateChild,
+    CssProvider, TemplateChild,
+    gdk::Display,
+    glib::{self, Properties, clone, object::ObjectExt},
 };
 use std::cell::RefCell;
 
@@ -74,6 +75,7 @@ mod imp {
 
         // Flags
         pub should_update: Rc<Cell<bool>>,
+        pub css_provider: RefCell<CssProvider>,
     }
 
     #[glib::object_subclass]
@@ -88,6 +90,7 @@ mod imp {
                 s: RefCell::new(0f32),
                 v: RefCell::new(0f32),
                 should_update: Rc::new(Cell::new(true)),
+                css_provider: RefCell::new(CssProvider::new()),
                 ..Default::default()
             }
         }
@@ -106,18 +109,21 @@ mod imp {
             Self::derived_properties()
         }
         fn set_property(&self, id: usize, value: &glib::Value, pspec: &glib::ParamSpec) {
-            Self::derived_set_property(&self, id, value, pspec);
+            Self::derived_set_property(self, id, value, pspec);
         }
 
         fn property(&self, id: usize, pspec: &glib::ParamSpec) -> glib::Value {
-            Self::derived_property(&self, id, pspec)
+            Self::derived_property(self, id, pspec)
         }
 
         fn constructed(&self) {
             self.parent_constructed();
 
             let obj = self.obj();
+
             obj.link_sliders();
+            obj.setup_css_provider();
+            obj.update_properties();
         }
     }
     impl WidgetImpl for BrushColorSelector {}
@@ -153,6 +159,7 @@ impl BrushColorSelector {
                 label.set_value(val);
                 if obj.imp().should_update.get() {
                     let _ = obj.activate_action("editor.set-color", None);
+                    obj.update_properties();
                 }
             }
         ));
@@ -175,7 +182,7 @@ impl BrushColorSelector {
             .build();
 
         let ss = &imp.saturation_slider;
-        let sl = &imp.saturation_slider;
+        let sl = &imp.saturation_label;
         let sa = &imp.saturation_a;
 
         ss.connect_value_changed(clone!(
@@ -189,6 +196,7 @@ impl BrushColorSelector {
                 label.set_value(val);
                 if obj.imp().should_update.get() {
                     let _ = obj.activate_action("editor.set-color", None);
+                    obj.update_properties();
                 }
             }
         ));
@@ -225,6 +233,7 @@ impl BrushColorSelector {
                 label.set_value(val);
                 if obj.imp().should_update.get() {
                     let _ = obj.activate_action("editor.set-color", None);
+                    obj.update_properties();
                 }
             }
         ));
@@ -261,5 +270,61 @@ impl BrushColorSelector {
         self.set_s(s);
         self.set_v(v);
         self.imp().should_update.set(true);
+
+        self.update_properties();
     }
+
+    fn setup_css_provider(&self) {
+        let provider = self.imp().css_provider.borrow();
+
+        gtk::style_context_add_provider_for_display(
+            &Display::default().unwrap(),
+            &provider.clone(),
+            gtk::STYLE_PROVIDER_PRIORITY_APPLICATION,
+        );
+    }
+
+    fn update_properties(&self) {
+        let provider = self.imp().css_provider.borrow();
+
+        let hsv: OpaqueColor<Hsv> = OpaqueColor::new([self.h(), self.s(), self.v()]);
+
+        let sat = make_saturation_gradient(hsv);
+        let val = make_value_gradient(hsv);
+
+        provider.load_from_string(&format!(
+            ":root {{ --sat_gradient: {}; --val_gradient: {}; }}",
+            sat, val
+        ));
+    }
+}
+
+fn make_saturation_gradient(hsv: OpaqueColor<Hsv>) -> String {
+    let [h, _, hsv_v] = hsv.components;
+
+    let full_hsv: OpaqueColor<Hsv> = OpaqueColor::new([h, 100f32, hsv_v]);
+    let full_hsl: OpaqueColor<Hsl> = full_hsv.convert();
+
+    let [_, _, l] = full_hsl.components;
+
+    format!(
+        "linear-gradient(to right, \
+         hsl({h}, 0%, {hsv_v}%), \
+         hsl({h}, 100%, {l}%))"
+    )
+}
+
+fn make_value_gradient(hsv: OpaqueColor<Hsv>) -> String {
+    let [h, hsv_s, _] = hsv.components;
+
+    let full_hsv: OpaqueColor<Hsv> = OpaqueColor::new([h, hsv_s, 100f32]);
+    let full_hsl: OpaqueColor<Hsl> = full_hsv.convert();
+
+    let [_, s, l] = full_hsl.components;
+
+    format!(
+        "linear-gradient(to right, \
+         #000, \
+         hsl({h}, {s}%, {l}%))",
+    )
 }

@@ -30,7 +30,7 @@ mod imp {
         #[template_child]
         new_document: TemplateChild<gtk::Button>,
         #[template_child]
-        open_document: TemplateChild<gtk::Button>
+        open_document: TemplateChild<gtk::Button>,
     }
 
     #[glib::object_subclass]
@@ -64,4 +64,3 @@ impl BrushWelcome {
         glib::Object::builder().build()
     }
 }
-

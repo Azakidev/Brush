@@ -200,11 +200,11 @@ impl Layer {
                 }
             }
             _ => {
-                if let Layer::Group(inner) = self {
-                    if let Some(idx) = inner.data.layers.iter().position(|l| l.id() == child.id()) {
-                        inner.data.layers.remove(idx);
-                        self.resize_group();
-                    }
+                if let Layer::Group(inner) = self
+                    && let Some(idx) = inner.data.layers.iter().position(|l| l.id() == child.id())
+                {
+                    inner.data.layers.remove(idx);
+                    self.resize_group();
                 }
             }
         }

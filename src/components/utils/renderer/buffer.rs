@@ -40,7 +40,6 @@ impl LayerBuffer {
         data: Option<&[f32]>,
     ) -> Self {
         unsafe {
-
             let texture = gl.create_texture().unwrap();
             gl.bind_texture(glow::TEXTURE_2D, Some(texture));
 

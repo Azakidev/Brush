@@ -58,7 +58,8 @@ impl GroupData {
                 continue;
             }
 
-            if child.children().is_some() { // Calculate children
+            if child.children().is_some() {
+                // Calculate children
                 child.resize_group();
             }
 

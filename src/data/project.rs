@@ -123,13 +123,12 @@ impl BrushProject {
         widget_cache.clear();
         // Remove old
         if let Some(parent_id) = old_parent {
-            if let Some(parent) = self.find_layer_mut(parent_id) {
-                if let Some(children) = parent.children() {
-                    if children.iter().any(|l| l.id() == layer.id()) {
-                        parent.remove_child(layer); // Force clear group texture
-                        buf_cache.remove(&parent.id());
-                    }
-                }
+            if let Some(parent) = self.find_layer_mut(parent_id)
+                && let Some(children) = parent.children()
+                && children.iter().any(|l| l.id() == layer.id())
+            {
+                parent.remove_child(layer); // Force clear group texture
+                buf_cache.remove(&parent.id());
             }
         } else if let Some(idx) = self.layers.iter().position(|l| l.id() == layer.id()) {
             self.layers.remove(idx);
@@ -138,10 +137,10 @@ impl BrushProject {
         if let Some(parent_id) = new_parent {
             if let Some(parent) = self.find_layer_mut(parent_id) {
                 parent.append(index, layer.clone());
-                if let Some(entry) = widget_cache.get(&parent_id) {
-                    if let Some(widget) = entry.upgrade() {
-                        widget.reveal();
-                    }
+                if let Some(entry) = widget_cache.get(&parent_id)
+                    && let Some(widget) = entry.upgrade()
+                {
+                    widget.reveal();
                 }
             }
         } else {
@@ -152,28 +151,28 @@ impl BrushProject {
     pub fn remove_stale_widgets(
         &self,
         layer: Uuid,
-        mut widget_cache: &mut HashMap<Uuid, WeakRef<BrushLayerItem>>,
+        widget_cache: &mut HashMap<Uuid, WeakRef<BrushLayerItem>>,
     ) {
         widget_cache.remove(&layer);
 
         if let Some(layer) = self.find_layer(layer) {
-            self.remove_stale_children(layer, &mut widget_cache);
+            self.remove_stale_children(layer, widget_cache);
         }
         if let Some(parent) = self.find_parent(layer) {
-            self.remove_stale_children(parent, &mut widget_cache);
-            self.remove_stale_widgets(parent.id(), &mut widget_cache);
+            self.remove_stale_children(parent, widget_cache);
+            self.remove_stale_widgets(parent.id(), widget_cache);
         }
     }
 
     pub fn remove_stale_children(
         &self,
         layer: &Layer,
-        mut widget_cache: &mut HashMap<Uuid, WeakRef<BrushLayerItem>>,
+        widget_cache: &mut HashMap<Uuid, WeakRef<BrushLayerItem>>,
     ) {
         if let Some(children) = layer.children() {
             for child in children {
                 widget_cache.remove(&child.id());
-                self.remove_stale_children(&child, &mut widget_cache);
+                self.remove_stale_children(child, widget_cache);
             }
         }
     }
@@ -207,17 +206,17 @@ impl BrushProject {
     fn search_parent_recursive_mut(layers: &mut [Layer], target_id: Uuid) -> Option<&mut Layer> {
         for layer in layers {
             // Layer contains target, return target
-            if let Some(children) = layer.children() {
-                if children.iter().any(|child| child.id() == target_id) {
-                    return Some(layer);
-                }
+            if let Some(children) = layer.children()
+                && children.iter().any(|child| child.id() == target_id)
+            {
+                return Some(layer);
             }
 
             // Layer doesn't contain target, but has children that must be checked
-            if let Some(children) = layer.children_mut() {
-                if let Some(found_parent) = Self::search_parent_recursive_mut(children, target_id) {
-                    return Some(found_parent);
-                }
+            if let Some(children) = layer.children_mut()
+                && let Some(found_parent) = Self::search_parent_recursive_mut(children, target_id)
+            {
+                return Some(found_parent);
             }
         }
         // Target is at the project's root
@@ -232,10 +231,10 @@ impl BrushProject {
             }
 
             // If it's a group, search its children
-            if let Some(children) = layer.children() {
-                if let Some(found) = Self::search_recursive(children, target_id) {
-                    return Some(found);
-                }
+            if let Some(children) = layer.children()
+                && let Some(found) = Self::search_recursive(children, target_id)
+            {
+                return Some(found);
             }
         }
         // Target doesn't exist
@@ -249,10 +248,10 @@ impl BrushProject {
                 return Some(layer);
             }
             // If it's a group, search its children
-            if let Some(children) = layer.children_mut() {
-                if let Some(found) = Self::search_recursive_mut(children, target_id) {
-                    return Some(found);
-                }
+            if let Some(children) = layer.children_mut()
+                && let Some(found) = Self::search_recursive_mut(children, target_id)
+            {
+                return Some(found);
             }
         }
         // Target doesn't exist
