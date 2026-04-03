@@ -35,18 +35,22 @@ pub struct ShaderManager {
 
 impl ShaderManager {
     pub unsafe fn new(gl: &glow::Context) -> Self {
-        Self {
-            background: ShaderProgram::new(gl, VERT, BG_FRAG),
-            layer: ShaderProgram::new(gl, VERT, PIXEL_FRAG),
+        unsafe {
+            Self {
+                background: ShaderProgram::new(gl, VERT, BG_FRAG),
+                layer: ShaderProgram::new(gl, VERT, PIXEL_FRAG),
+            }
         }
     }
 
     pub unsafe fn destroy(&self, gl: &glow::Context) {
-        gl.use_program(None);
+        unsafe {
+            gl.use_program(None);
 
-        for (_name, shader) in self.iter() {
-            if let Some(program) = shader.downcast_ref::<ShaderProgram>() {
-                program.destroy(gl);
+            for (_name, shader) in self.iter() {
+                if let Some(program) = shader.downcast_ref::<ShaderProgram>() {
+                    program.destroy(gl);
+                }
             }
         }
     }

@@ -185,7 +185,9 @@ unsafe fn render_layer_tree(
                 let buffer = get_or_create_buffer(cache, gl, layer);
 
                 if layer.is_dirty() {
-                    gl.bind_texture(glow::TEXTURE_2D, Some(buffer.texture));
+                    unsafe {
+                        gl.bind_texture(glow::TEXTURE_2D, Some(buffer.texture));
+                    }
 
                     if let Some(colors) = layer.pixel_data() {
                         let btyes = bytemuck::cast_slice(colors);
@@ -207,9 +209,9 @@ unsafe fn render_layer_tree(
                     }
                 }
 
-                composite_buffer(gl, &buffer, layer, shaders, parent_mvp);
-
-                // gl.bind_framebuffer(glow::FRAMEBUFFER, parent_fbo);
+                unsafe {
+                    composite_buffer(gl, &buffer, layer, shaders, parent_mvp);
+                }
             }
             Layer::Group(_) => {
                 layer.resize_group();
@@ -223,10 +225,14 @@ unsafe fn render_layer_tree(
 
                 let group_buffer = get_or_create_buffer(cache, gl, layer);
 
-                gl.bind_framebuffer(glow::FRAMEBUFFER, Some(group_buffer.framebuffer));
-                gl.viewport(0, 0, gw, gh);
-                gl.clear_color(0.0, 0.0, 0.0, 0.0); // Transparent background!
-                gl.clear(glow::COLOR_BUFFER_BIT);
+                unsafe {
+                    // Bind and set viewport
+                    gl.bind_framebuffer(glow::FRAMEBUFFER, Some(group_buffer.framebuffer));
+                    gl.viewport(0, 0, gw, gh);
+                    // Clear
+                    gl.clear_color(0.0, 0.0, 0.0, 0.0);
+                    gl.clear(glow::COLOR_BUFFER_BIT);
+                }
 
                 let group_proj =
                     glam::Mat4::orthographic_lh(0.0, gw as f32, gh as f32, 0.0, -1.0, 1.0);
@@ -236,24 +242,27 @@ unsafe fn render_layer_tree(
                 let group_mvp = group_proj * group_view;
 
                 if let Some(children) = layer.children_mut() {
-                    render_layer_tree(
-                        cache,
-                        gl,
-                        children,
-                        shaders,
-                        &group_mvp,
-                        group_buffer.framebuffer,
-                        gw,
-                        gh,
-                    );
+                    unsafe {
+                        render_layer_tree(
+                            cache,
+                            gl,
+                            children,
+                            shaders,
+                            &group_mvp,
+                            group_buffer.framebuffer,
+                            gw,
+                            gh,
+                        );
+                    }
                 }
 
-                // debug_buffer_contents(gl, layer);
+                unsafe {
+                    // Unbind and switch to previous viewport
+                    gl.bind_framebuffer(glow::FRAMEBUFFER, Some(parent_fbo));
+                    gl.viewport(0, 0, parent_w, parent_h);
 
-                gl.bind_framebuffer(glow::FRAMEBUFFER, Some(parent_fbo));
-                gl.viewport(0, 0, parent_w, parent_h);
-
-                composite_buffer(gl, &group_buffer, layer, shaders, parent_mvp);
+                    composite_buffer(gl, &group_buffer, layer, shaders, parent_mvp);
+                }
             }
             Layer::Fill(_) => {
                 todo!()
@@ -303,7 +312,9 @@ pub unsafe fn composite_buffer(
     shaders: &mut ShaderManager,
     active_mvp: &glam::Mat4,
 ) {
-    shaders.layer.bind(gl);
+    unsafe {
+        shaders.layer.bind(gl);
+    }
 
     let (x, y) = (layer.x() as f32, layer.y() as f32);
     let (w, h) = (buffer.width as f32, buffer.height as f32);
@@ -313,26 +324,28 @@ pub unsafe fn composite_buffer(
 
     let final_mvp = *active_mvp * model;
 
-    if let Some(loc) = shaders.layer.get_uniform(gl, "u_mvp") {
-        gl.uniform_matrix_4_f32_slice(Some(&loc), false, &final_mvp.to_cols_array());
-    }
+    unsafe {
+        if let Some(loc) = shaders.layer.get_uniform(gl, "u_mvp") {
+            gl.uniform_matrix_4_f32_slice(Some(&loc), false, &final_mvp.to_cols_array());
+        }
 
-    if let Some(loc) = shaders.layer.get_uniform(gl, "u_opacity") {
-        gl.uniform_1_f32(Some(&loc), layer.opacity());
-    }
-    if let Some(loc) = shaders.layer.get_uniform(gl, "u_flip_y") {
-        gl.uniform_1_f32(Some(&loc), 1.0); // Static textures usually don't need flipping
-    }
-    if let Some(loc) = shaders.layer.get_uniform(gl, "u_should_convert") {
-        gl.uniform_1_u32(Some(&loc), 0); // Static textures usually don't need flipping
-    }
+        if let Some(loc) = shaders.layer.get_uniform(gl, "u_opacity") {
+            gl.uniform_1_f32(Some(&loc), layer.opacity());
+        }
+        if let Some(loc) = shaders.layer.get_uniform(gl, "u_flip_y") {
+            gl.uniform_1_f32(Some(&loc), 1.0); // Static textures usually don't need flipping
+        }
+        if let Some(loc) = shaders.layer.get_uniform(gl, "u_should_convert") {
+            gl.uniform_1_u32(Some(&loc), 0); // Don't convert to RGB yet
+        }
 
-    gl.enable(glow::BLEND);
-    gl.blend_func(glow::ONE, glow::ONE_MINUS_SRC_ALPHA);
-    gl.blend_equation(glow::FUNC_ADD);
+        gl.enable(glow::BLEND);
+        gl.blend_func(glow::ONE, glow::ONE_MINUS_SRC_ALPHA);
+        gl.blend_equation(glow::FUNC_ADD);
 
-    gl.bind_texture(glow::TEXTURE_2D, Some(buffer.texture));
-    gl.draw_arrays(glow::TRIANGLE_STRIP, 0, 4);
+        gl.bind_texture(glow::TEXTURE_2D, Some(buffer.texture));
+        gl.draw_arrays(glow::TRIANGLE_STRIP, 0, 4);
+    }
 }
 
 pub unsafe fn composite_root_buffer(
@@ -341,7 +354,9 @@ pub unsafe fn composite_root_buffer(
     shaders: &mut ShaderManager,
     active_mvp: &glam::Mat4,
 ) {
-    shaders.layer.bind(gl);
+    unsafe {
+        shaders.layer.bind(gl);
+    }
 
     let (w, h) = (buffer.width as f32, buffer.height as f32);
 
@@ -350,26 +365,28 @@ pub unsafe fn composite_root_buffer(
 
     let final_mvp = *active_mvp * model;
 
-    if let Some(loc) = shaders.layer.get_uniform(gl, "u_mvp") {
-        gl.uniform_matrix_4_f32_slice(Some(&loc), false, &final_mvp.to_cols_array());
-    }
+    unsafe {
+        if let Some(loc) = shaders.layer.get_uniform(gl, "u_mvp") {
+            gl.uniform_matrix_4_f32_slice(Some(&loc), false, &final_mvp.to_cols_array());
+        }
 
-    if let Some(loc) = shaders.layer.get_uniform(gl, "u_opacity") {
-        gl.uniform_1_f32(Some(&loc), 1.0);
-    }
-    if let Some(loc) = shaders.layer.get_uniform(gl, "u_flip_y") {
-        gl.uniform_1_f32(Some(&loc), 0.0); // Static textures usually don't need flipping
-    }
-    if let Some(loc) = shaders.layer.get_uniform(gl, "u_should_convert") {
-        gl.uniform_1_u32(Some(&loc), 1); // Static textures usually don't need flipping
-    }
+        if let Some(loc) = shaders.layer.get_uniform(gl, "u_opacity") {
+            gl.uniform_1_f32(Some(&loc), 1.0);
+        }
+        if let Some(loc) = shaders.layer.get_uniform(gl, "u_flip_y") {
+            gl.uniform_1_f32(Some(&loc), 0.0); // Static textures usually don't need flipping
+        }
+        if let Some(loc) = shaders.layer.get_uniform(gl, "u_should_convert") {
+            gl.uniform_1_u32(Some(&loc), 1); // Convert to RGB for displaying
+        }
 
-    gl.enable(glow::BLEND);
-    gl.blend_func(glow::ONE, glow::ONE_MINUS_SRC_ALPHA);
-    gl.blend_equation(glow::FUNC_ADD);
+        gl.enable(glow::BLEND);
+        gl.blend_func(glow::ONE, glow::ONE_MINUS_SRC_ALPHA);
+        gl.blend_equation(glow::FUNC_ADD);
 
-    gl.bind_texture(glow::TEXTURE_2D, Some(buffer.texture));
-    gl.draw_arrays(glow::TRIANGLE_STRIP, 0, 4);
+        gl.bind_texture(glow::TEXTURE_2D, Some(buffer.texture));
+        gl.draw_arrays(glow::TRIANGLE_STRIP, 0, 4);
+    }
 }
 
 fn calculate_global_mvp(
@@ -405,26 +422,30 @@ pub unsafe fn draw_checkerboard(
     zoom: f32,
     mvp: &glam::Mat4,
 ) {
-    shaders.background.bind(gl);
+    unsafe {
+        shaders.background.bind(gl);
+    }
 
     let model = glam::Mat4::from_scale(glam::vec3(canvas_w, canvas_h, 1.0));
 
     let final_mvp = *mvp * model;
 
-    if let Some(loc) = shaders.background.get_uniform(gl, "u_mvp") {
-        gl.uniform_matrix_4_f32_slice(Some(&loc), false, &final_mvp.to_cols_array());
-    }
-    if let Some(loc) = shaders.background.get_uniform(gl, "u_canvas_size") {
-        gl.uniform_2_f32(Some(&loc), canvas_w, canvas_h);
-    }
-    if let Some(loc) = shaders.background.get_uniform(gl, "u_zoom") {
-        gl.uniform_1_f32(Some(&loc), zoom);
-    }
-    if let Some(loc) = shaders.layer.get_uniform(gl, "u_flip_y") {
-        gl.uniform_1_f32(Some(&loc), 0.0); // Static textures usually don't need flipping
-    }
+    unsafe {
+        if let Some(loc) = shaders.background.get_uniform(gl, "u_mvp") {
+            gl.uniform_matrix_4_f32_slice(Some(&loc), false, &final_mvp.to_cols_array());
+        }
+        if let Some(loc) = shaders.background.get_uniform(gl, "u_canvas_size") {
+            gl.uniform_2_f32(Some(&loc), canvas_w, canvas_h);
+        }
+        if let Some(loc) = shaders.background.get_uniform(gl, "u_zoom") {
+            gl.uniform_1_f32(Some(&loc), zoom);
+        }
+        if let Some(loc) = shaders.layer.get_uniform(gl, "u_flip_y") {
+            gl.uniform_1_f32(Some(&loc), 0.0); // Static textures usually don't need flipping
+        }
 
-    gl.draw_arrays(glow::TRIANGLE_STRIP, 0, 4);
+        gl.draw_arrays(glow::TRIANGLE_STRIP, 0, 4);
+    }
 }
 
 unsafe fn get_or_create_root_buffer<'a>(
@@ -435,11 +456,13 @@ unsafe fn get_or_create_root_buffer<'a>(
     let imp = canvas.imp();
     let root_fbo = &imp.gl_root_fbo;
 
-    if root_fbo.get().is_none() {
-        let fbo = LayerBuffer::new(gl, 0, 0, project.width, project.height, None);
-        imp.gl_root_fbo
-            .set(fbo)
-            .expect("Root FBO already set, this shouldn't happen, just checked it's empty");
+    unsafe {
+        if root_fbo.get().is_none() {
+            let fbo = LayerBuffer::new(gl, 0, 0, project.width, project.height, None);
+            imp.gl_root_fbo
+                .set(fbo)
+                .expect("Root FBO already set, this shouldn't happen, just checked it's empty");
+        }
     }
 
     imp.gl_root_fbo.get().unwrap()

@@ -38,7 +38,9 @@ pub unsafe fn clean_unused_buffers(
 
     cache.retain(|id, buffer| {
         if !active_ids.contains(id) {
-            buffer.destroy(gl);
+            unsafe {
+                buffer.destroy(gl);
+            }
             false
         } else {
             true
@@ -72,15 +74,17 @@ pub unsafe fn debug_buffer_contents(gl: &glow::Context, layer: &Layer) {
     let (w, h) = (layer.width(), layer.height());
     let mut pixels = vec![0u8; (w * h * 4) as usize];
 
-    gl.read_pixels(
-        0,
-        0,
-        w as i32,
-        h as i32,
-        glow::RGBA,
-        glow::UNSIGNED_BYTE,
-        glow::PixelPackData::Slice(Some(&mut pixels)),
-    );
+    unsafe {
+        gl.read_pixels(
+            0,
+            0,
+            w as i32,
+            h as i32,
+            glow::RGBA,
+            glow::UNSIGNED_BYTE,
+            glow::PixelPackData::Slice(Some(&mut pixels)),
+        );
+    }
 
     let has_data = pixels.iter().any(|&x| x > 0);
     let sum: u64 = pixels.iter().map(|&x| x as u64).sum();

@@ -19,6 +19,7 @@
  */
 
 use adw::{prelude::*, subclass::prelude::*};
+use color::{AlphaColor, Oklab};
 use glow::{Context, NativeVertexArray};
 use gtk::{
     gdk,
@@ -155,19 +156,19 @@ mod imp {
             });
 
             klass.install_action("canvas.pan-up", None, move |canvas, _, _| {
-                canvas.move_by(0f32, -20f32);
+                canvas.move_by(0f32, 60f32);
             });
 
             klass.install_action("canvas.pan-down", None, move |canvas, _, _| {
-                canvas.move_by(0f32, 20f32);
+                canvas.move_by(0f32, -60f32);
             });
 
             klass.install_action("canvas.pan-right", None, move |canvas, _, _| {
-                canvas.move_by(20f32, 0f32);
+                canvas.move_by(-60f32, 0f32);
             });
 
             klass.install_action("canvas.pan-left", None, move |canvas, _, _| {
-                canvas.move_by(-20f32, 0f32);
+                canvas.move_by(60f32, 0f32);
             });
 
             klass.install_action("canvas.rotate-right", None, move |canvas, _, _| {
@@ -736,7 +737,9 @@ impl BrushCanvas {
 
     pub fn move_by(&self, dx: f32, dy: f32) {
         let (x, y) = self.imp().position.get();
-        self.imp().position.set((x + dx, y + dy));
+        let zoom = self.zoom();
+
+        self.imp().position.set((x + (dx * zoom), y + (dy * zoom)));
         self.imp().canvas.queue_draw();
     }
 
@@ -1027,7 +1030,7 @@ impl BrushCanvas {
         controller.add_shortcut(gtk::Shortcut::new(
             Some(gtk::KeyvalTrigger::new(
                 gdk::Key::Up,
-                gdk::ModifierType::NO_MODIFIER_MASK,
+                gdk::ModifierType::SHIFT_MASK,
             )),
             Some(gtk::NamedAction::new("canvas.pan-up")),
         ));
@@ -1035,7 +1038,7 @@ impl BrushCanvas {
         controller.add_shortcut(gtk::Shortcut::new(
             Some(gtk::KeyvalTrigger::new(
                 gdk::Key::Down,
-                gdk::ModifierType::NO_MODIFIER_MASK,
+                gdk::ModifierType::SHIFT_MASK,
             )),
             Some(gtk::NamedAction::new("canvas.pan-down")),
         ));
@@ -1043,7 +1046,7 @@ impl BrushCanvas {
         controller.add_shortcut(gtk::Shortcut::new(
             Some(gtk::KeyvalTrigger::new(
                 gdk::Key::Right,
-                gdk::ModifierType::NO_MODIFIER_MASK,
+                gdk::ModifierType::SHIFT_MASK,
             )),
             Some(gtk::NamedAction::new("canvas.pan-right")),
         ));
@@ -1051,7 +1054,7 @@ impl BrushCanvas {
         controller.add_shortcut(gtk::Shortcut::new(
             Some(gtk::KeyvalTrigger::new(
                 gdk::Key::Left,
-                gdk::ModifierType::NO_MODIFIER_MASK,
+                gdk::ModifierType::SHIFT_MASK,
             )),
             Some(gtk::NamedAction::new("canvas.pan-left")),
         ));
@@ -1145,6 +1148,8 @@ impl BrushCanvas {
             if let Some(layer) = project.find_layer_mut(active_id) {
                 // TODO: Brush engine
                 let dynamic_size = (*base_size as f64 * pressure).clamp(1f64, 1000f64) as i32;
+
+                let color: AlphaColor<Oklab> = color.convert();
 
                 layer.draw_brush_dab(cx as i32, cy as i32, dynamic_size, color);
 

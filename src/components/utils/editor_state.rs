@@ -20,17 +20,17 @@
 
 use std::cell::RefCell;
 
-use color::{Hsl, Oklab, OpaqueColor};
+use color::OpaqueColor;
 
-use crate::components::utils::tools::BrushTool;
+use crate::components::utils::{color::Hsv, tools::BrushTool};
 
 #[derive(Debug, PartialEq, Clone)]
 #[allow(dead_code)]
 pub struct BrushEditorState {
     pub tool: RefCell<BrushTool>,
     // Colors
-    pub primary_color: RefCell<OpaqueColor<Oklab>>,
-    pub secondary_color: RefCell<OpaqueColor<Oklab>>,
+    pub primary_color: RefCell<OpaqueColor<Hsv>>,
+    pub secondary_color: RefCell<OpaqueColor<Hsv>>,
     // Brush
     pub brush_opacity: RefCell<f32>,
     pub brush_size: RefCell<u32>
@@ -55,7 +55,7 @@ impl BrushEditorState {
         self.primary_color.swap(&self.secondary_color);
     }
 
-    pub fn set_color(&self, primary: OpaqueColor<Hsl>) {
+    pub fn set_color(&self, primary: OpaqueColor<Hsv>) {
         self.primary_color.replace(primary.convert());
     }
 

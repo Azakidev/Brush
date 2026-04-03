@@ -50,7 +50,7 @@ use crate::{
         color_selector::BrushColorSelector,
         layer_item::BrushLayerItem,
         layer_tree::BrushLayerTree,
-        utils::{color::oklab_to_rgba, editor_state::BrushEditorState},
+        utils::{color::to_rgba, editor_state::BrushEditorState},
     },
     data::project::BrushProject,
 };
@@ -154,11 +154,14 @@ mod imp {
             klass.install_action("editor.swap-colors", None, |editor, _, _| {
                 editor.imp().editor_state.borrow().swap_colors();
                 let state = editor.imp().editor_state.borrow();
-                let primary_color = oklab_to_rgba(&state.primary_color.borrow());
-                let secondary_color = oklab_to_rgba(&state.secondary_color.borrow());
+                let selector = &editor.imp().color_selector;
+
+                let primary_color = to_rgba(&state.primary_color.borrow());
+                let secondary_color = to_rgba(&state.secondary_color.borrow());
 
                 editor.emit_by_name::<()>("primary-changed", &[&primary_color]);
                 editor.emit_by_name::<()>("secondary-changed", &[&secondary_color]);
+                selector.set_color(&state.primary_color.borrow());
             });
 
             klass.install_action("editor.set-color", None, |editor, _, _| {
@@ -168,7 +171,7 @@ mod imp {
 
                 state.primary_color.replace(color);
 
-                let rgb = oklab_to_rgba(&color);
+                let rgb = to_rgba(&color);
                 editor.emit_by_name::<()>("primary-changed", &[&rgb]);
             });
 
@@ -339,8 +342,8 @@ mod imp {
             // Initial UI sync
             {
                 let state = self.editor_state.borrow();
-                let primary_color = oklab_to_rgba(&state.primary_color.borrow());
-                let secondary_color = oklab_to_rgba(&state.secondary_color.borrow());
+                let primary_color = to_rgba(&state.primary_color.borrow());
+                let secondary_color = to_rgba(&state.secondary_color.borrow());
 
                 primary.set_color(primary_color);
                 secondary.set_color(secondary_color);

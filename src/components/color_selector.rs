@@ -19,17 +19,21 @@
  */
 
 use adw::{
-    prelude::{RangeExt, ToVariant, WidgetExt},
+    prelude::{RangeExt, WidgetExt},
     subclass::prelude::*,
 };
-use color::{Hsl, Oklab, OpaqueColor};
+use color::OpaqueColor;
 use gtk::{
-    glib::{self, clone, object::ObjectExt, value::ToValue, Properties, Variant, VariantTy},
+    glib::{self, clone, object::ObjectExt, Properties},
     TemplateChild,
 };
 use std::cell::RefCell;
 
+use crate::components::utils::color::Hsv;
+
 mod imp {
+
+    use std::{cell::Cell, rc::Rc};
 
     use super::*;
 
@@ -37,7 +41,7 @@ mod imp {
     #[properties(wrapper_type = super::BrushColorSelector)]
     #[template(resource = "/art/FatDawlf/Brush/color-selector.ui")]
     pub struct BrushColorSelector {
-        // HSV Sliders
+        // Sliders
         #[template_child]
         pub hue_slider: TemplateChild<gtk::Scale>,
         #[template_child]
@@ -45,14 +49,15 @@ mod imp {
         #[template_child]
         pub value_slider: TemplateChild<gtk::Scale>,
 
-        // HSV Labels
+        // Spin Buttons
         #[template_child]
         pub hue_label: TemplateChild<gtk::SpinButton>,
         #[template_child]
         pub saturation_label: TemplateChild<gtk::SpinButton>,
         #[template_child]
         pub value_label: TemplateChild<gtk::SpinButton>,
-        // HSV adjustments
+
+        // Adjustments
         #[template_child]
         pub hue_a: TemplateChild<gtk::Adjustment>,
         #[template_child]
@@ -66,6 +71,9 @@ mod imp {
         pub s: RefCell<f32>,
         #[property(get, set)]
         pub v: RefCell<f32>,
+
+        // Flags
+        pub should_update: Rc<Cell<bool>>,
     }
 
     #[glib::object_subclass]
@@ -79,6 +87,7 @@ mod imp {
                 h: RefCell::new(0f32),
                 s: RefCell::new(0f32),
                 v: RefCell::new(0f32),
+                should_update: Rc::new(Cell::new(true)),
                 ..Default::default()
             }
         }
@@ -142,7 +151,9 @@ impl BrushColorSelector {
                 let label = &imp.hue_label;
 
                 label.set_value(val);
-                let _ = obj.activate_action("editor.set-color", None);
+                if obj.imp().should_update.get() {
+                    let _ = obj.activate_action("editor.set-color", None);
+                }
             }
         ));
 
@@ -176,7 +187,9 @@ impl BrushColorSelector {
                 let label = &imp.saturation_label;
 
                 label.set_value(val);
-                let _ = obj.activate_action("editor.set-color", None);
+                if obj.imp().should_update.get() {
+                    let _ = obj.activate_action("editor.set-color", None);
+                }
             }
         ));
 
@@ -210,7 +223,9 @@ impl BrushColorSelector {
                 let label = &imp.value_label;
 
                 label.set_value(val);
-                let _ = obj.activate_action("editor.set-color", None);
+                if obj.imp().should_update.get() {
+                    let _ = obj.activate_action("editor.set-color", None);
+                }
             }
         ));
 
@@ -232,10 +247,19 @@ impl BrushColorSelector {
             .build();
     }
 
-    pub fn color(&self) -> OpaqueColor<Oklab> {
-        let hsl: OpaqueColor<Hsl> = color::OpaqueColor::new([self.h(), self.s(), self.v()]);
-        let oklab: OpaqueColor<Oklab> = hsl.convert();
+    pub fn color(&self) -> OpaqueColor<Hsv> {
+        let hsl: OpaqueColor<Hsv> = color::OpaqueColor::new([self.h(), self.s(), self.v()]);
 
-        oklab
+        hsl
+    }
+
+    pub fn set_color(&self, color: &OpaqueColor<Hsv>) {
+        let [h, s, v] = color.components;
+
+        self.imp().should_update.set(false);
+        self.set_h(h);
+        self.set_s(s);
+        self.set_v(v);
+        self.imp().should_update.set(true);
     }
 }

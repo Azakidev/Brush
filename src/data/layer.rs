@@ -327,7 +327,7 @@ where
 }
 
 #[allow(dead_code)]
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy)]
 pub struct NodeLayerParameters {
     opacity: f32,
     visible: bool,
@@ -370,7 +370,7 @@ impl NodeLayerParameters {
         alpha_lock: bool,
     ) -> Self {
         Self {
-            opacity: opacity.max(1f32),
+            opacity: opacity.clamp(0f32, 1f32),
             blend_mode,
             visible,
             lock,
@@ -381,7 +381,7 @@ impl NodeLayerParameters {
 }
 
 #[allow(dead_code)]
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy)]
 pub struct FilterLayerParameters {
     visible: bool,
     lock: bool,

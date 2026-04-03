@@ -29,23 +29,25 @@ pub struct ShaderProgram {
 
 impl ShaderProgram {
     pub unsafe fn new(gl: &glow::Context, v_src: &str, f_src: &str) -> Self {
-        let program = gl.create_program().expect("Cannot create program");
+        unsafe {
+            let program = gl.create_program().expect("Cannot create program");
 
-        let vs = compile_shader(gl, glow::VERTEX_SHADER, v_src);
-        let fs = compile_shader(gl, glow::FRAGMENT_SHADER, f_src);
+            let vs = compile_shader(gl, glow::VERTEX_SHADER, v_src);
+            let fs = compile_shader(gl, glow::FRAGMENT_SHADER, f_src);
 
-        gl.attach_shader(program, vs);
-        gl.attach_shader(program, fs);
-        gl.link_program(program);
+            gl.attach_shader(program, vs);
+            gl.attach_shader(program, fs);
+            gl.link_program(program);
 
-        // Check link status as we discussed before
-        if !gl.get_program_link_status(program) {
-            panic!("Link Error: {}", gl.get_program_info_log(program));
-        }
+            // Check link status as we discussed before
+            if !gl.get_program_link_status(program) {
+                panic!("Link Error: {}", gl.get_program_info_log(program));
+            }
 
-        Self {
-            program,
-            uniforms: HashMap::new(),
+            Self {
+                program,
+                uniforms: HashMap::new(),
+            }
         }
     }
 
@@ -57,31 +59,41 @@ impl ShaderProgram {
         if let Some(loc) = self.uniforms.get(name) {
             return Some(*loc);
         }
-        let loc = gl.get_uniform_location(self.program, name);
-        if let Some(l) = loc {
-            self.uniforms.insert(name.to_string(), l);
+
+        unsafe {
+            let loc = gl.get_uniform_location(self.program, name);
+
+            if let Some(l) = loc {
+                self.uniforms.insert(name.to_string(), l);
+            }
+
+            loc
         }
-        loc
     }
 
     pub unsafe fn bind(&self, gl: &glow::Context) {
-        gl.use_program(Some(self.program));
+        unsafe {
+            gl.use_program(Some(self.program));
+        }
     }
 
     pub unsafe fn destroy(&self, gl: &glow::Context) {
-        gl.delete_program(self.program);
+        unsafe {
+            gl.delete_program(self.program);
+        }
     }
 }
 
 unsafe fn compile_shader(gl: &glow::Context, shader_type: u32, source: &str) -> glow::Shader {
-    use glow::HasContext;
-    let shader = gl.create_shader(shader_type).expect("Cannot create shader");
-    gl.shader_source(shader, source);
-    gl.compile_shader(shader);
+    unsafe {
+        let shader = gl.create_shader(shader_type).expect("Cannot create shader");
+        gl.shader_source(shader, source);
+        gl.compile_shader(shader);
 
-    if !gl.get_shader_compile_status(shader) {
-        let log = gl.get_shader_info_log(shader);
-        panic!("Shader Compile Error ({:?}): {}", shader_type, log);
+        if !gl.get_shader_compile_status(shader) {
+            let log = gl.get_shader_info_log(shader);
+            panic!("Shader Compile Error ({:?}): {}", shader_type, log);
+        }
+        shader
     }
-    shader
 }

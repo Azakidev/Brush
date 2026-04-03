@@ -39,84 +39,89 @@ impl LayerBuffer {
         height: u32,
         data: Option<&[f32]>,
     ) -> Self {
-        let texture = gl.create_texture().unwrap();
-        gl.bind_texture(glow::TEXTURE_2D, Some(texture));
+        unsafe {
 
-        // Set scaling filters so it doesn't look blurry when zooming
-        gl.tex_parameter_i32(
-            glow::TEXTURE_2D,
-            glow::TEXTURE_MIN_FILTER,
-            glow::LINEAR as i32,
-        );
-        gl.tex_parameter_i32(
-            glow::TEXTURE_2D,
-            glow::TEXTURE_MAG_FILTER,
-            glow::NEAREST as i32,
-        );
+            let texture = gl.create_texture().unwrap();
+            gl.bind_texture(glow::TEXTURE_2D, Some(texture));
 
-        if let Some(oklab) = data {
-            let bytes = bytemuck::cast_slice(oklab);
-
-            gl.tex_image_2d(
+            // Set scaling filters so it doesn't look blurry when zooming
+            gl.tex_parameter_i32(
                 glow::TEXTURE_2D,
-                0,
-                glow::RGBA32F as i32,
-                width as i32,
-                height as i32,
-                0,
-                glow::RGBA,
-                glow::FLOAT,
-                glow::PixelUnpackData::Slice(Some(bytes)),
+                glow::TEXTURE_MIN_FILTER,
+                glow::LINEAR as i32,
             );
-        } else {
-            gl.tex_image_2d(
+            gl.tex_parameter_i32(
                 glow::TEXTURE_2D,
-                0,
-                glow::RGBA32F as i32,
-                width as i32,
-                height as i32,
-                0,
-                glow::RGBA,
-                glow::FLOAT,
-                glow::PixelUnpackData::Slice(None),
+                glow::TEXTURE_MAG_FILTER,
+                glow::NEAREST as i32,
             );
-        };
 
-        let framebuffer = gl.create_framebuffer().unwrap();
-        gl.bind_framebuffer(glow::FRAMEBUFFER, Some(framebuffer));
+            if let Some(oklab) = data {
+                let bytes = bytemuck::cast_slice(oklab);
 
-        gl.framebuffer_texture_2d(
-            glow::FRAMEBUFFER,
-            glow::COLOR_ATTACHMENT0,
-            glow::TEXTURE_2D,
-            Some(texture),
-            0,
-        );
+                gl.tex_image_2d(
+                    glow::TEXTURE_2D,
+                    0,
+                    glow::RGBA32F as i32,
+                    width as i32,
+                    height as i32,
+                    0,
+                    glow::RGBA,
+                    glow::FLOAT,
+                    glow::PixelUnpackData::Slice(Some(bytes)),
+                );
+            } else {
+                gl.tex_image_2d(
+                    glow::TEXTURE_2D,
+                    0,
+                    glow::RGBA32F as i32,
+                    width as i32,
+                    height as i32,
+                    0,
+                    glow::RGBA,
+                    glow::FLOAT,
+                    glow::PixelUnpackData::Slice(None),
+                );
+            };
 
-        if data.is_none() {
-            gl.clear_color(0.0, 0.0, 0.0, 0.0);
-            gl.clear(glow::COLOR_BUFFER_BIT);
-        }
+            let framebuffer = gl.create_framebuffer().unwrap();
+            gl.bind_framebuffer(glow::FRAMEBUFFER, Some(framebuffer));
 
-        let status = gl.check_framebuffer_status(glow::FRAMEBUFFER);
-        if status != glow::FRAMEBUFFER_COMPLETE {
-            eprintln!("Framebuffer is incomplete: {:#x}", status);
-        }
+            gl.framebuffer_texture_2d(
+                glow::FRAMEBUFFER,
+                glow::COLOR_ATTACHMENT0,
+                glow::TEXTURE_2D,
+                Some(texture),
+                0,
+            );
 
-        gl.bind_framebuffer(glow::FRAMEBUFFER, None);
+            if data.is_none() {
+                gl.clear_color(0.0, 0.0, 0.0, 0.0);
+                gl.clear(glow::COLOR_BUFFER_BIT);
+            }
 
-        Self {
-            texture,
-            framebuffer,
-            width,
-            height,
-            offset_x: x,
-            offset_y: y,
+            let status = gl.check_framebuffer_status(glow::FRAMEBUFFER);
+            if status != glow::FRAMEBUFFER_COMPLETE {
+                eprintln!("Framebuffer is incomplete: {:#x}", status);
+            }
+
+            gl.bind_framebuffer(glow::FRAMEBUFFER, None);
+
+            Self {
+                texture,
+                framebuffer,
+                width,
+                height,
+                offset_x: x,
+                offset_y: y,
+            }
         }
     }
 
     pub unsafe fn destroy(&self, gl: &glow::Context) {
-        gl.delete_framebuffer(self.framebuffer);
-        gl.delete_texture(self.texture);
+        unsafe {
+            gl.delete_framebuffer(self.framebuffer);
+            gl.delete_texture(self.texture);
+        }
     }
 }

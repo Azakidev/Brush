@@ -20,7 +20,7 @@
 
 use serde::{Deserialize, Serialize};
 
-#[derive(Serialize, Deserialize, Debug, Default, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Default, Clone, Copy, PartialEq)]
 pub enum BlendMode {
     #[default]
     Normal,
