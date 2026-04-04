@@ -106,3 +106,7 @@ colorChip {
 .compact button {
     min-width: 0px;
 }
+
+.compact entry {
+    min-width: 0px;
+}

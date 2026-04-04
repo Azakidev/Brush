@@ -383,6 +383,14 @@ pub unsafe fn composite_root_buffer(
         gl.blend_equation(glow::FUNC_ADD);
 
         gl.bind_texture(glow::TEXTURE_2D, Some(buffer.texture));
+
+        gl.generate_mipmap(glow::TEXTURE_2D);
+        gl.tex_parameter_i32(
+            glow::TEXTURE_2D,
+            glow::TEXTURE_MIN_FILTER,
+            glow::NEAREST_MIPMAP_LINEAR as i32,
+        );
+        
         gl.draw_arrays(glow::TRIANGLE_STRIP, 0, 4);
     }
 }

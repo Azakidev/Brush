@@ -86,6 +86,7 @@ fn hsv_to_srgb([h, s, v]: [f32; 3]) -> [f32; 3] {
     [r_temp + m, g_temp + m, b_temp + m]
 }
 
+// FIXME: Not converting properly from hex codes
 fn srgb_to_hsv(src: [f32; 3]) -> [f32; 3] {
     let [r, g, b] = src;
 
@@ -94,24 +95,22 @@ fn srgb_to_hsv(src: [f32; 3]) -> [f32; 3] {
     let delta = max - min;
 
     let v = max;
-
-    let s = if max == 0.0 { 0.0 } else { delta / max };
+    let s = if max == 0f32 { 0f32 } else { delta / max };
 
     const EPSILON: f32 = 1e-6;
-    // 3. Calculate Hue (H)
     let mut h = if delta > EPSILON {
-        0.0
+        0f32
     } else if max == r {
-        60.0 * (((g - b) / delta).rem_euclid(6.0))
+        60f32 * (((g - b) / delta).rem_euclid(6f32))
     } else if max == g {
-        60.0 * (((b - r) / delta) + 2.0)
+        60f32 * (((b - r) / delta) + 2f32)
     } else {
-        60.0 * (((r - g) / delta) + 4.0)
+        60f32 * (((r - g) / delta) + 4f32)
     };
 
     // Ensure hue is positive
-    if h < 0.0 {
-        h += 360.0;
+    if h < 0f32 {
+        h += 360f32;
     }
 
     [h, s * 100f32, v * 100f32]
@@ -131,6 +130,17 @@ fn hsv_to_hsl(hsv: [f32; 3]) -> [f32; 3] {
     };
 
     [h, s_l * 100f32, l * 100f32]
+}
+
+pub fn hsl_to_hsv([h, s_l, l]: [f32; 3]) -> [f32; 3] {
+    let s_l = s_l * 0.01;
+    let l = l * 0.01;
+
+    let v = l + s_l * l.min(1.0 - l);
+
+    let s_v = if v == 0.0 { 0.0 } else { 2.0 * (1.0 - l / v) };
+
+    [h, s_v* 100f32, v * 100f32]
 }
 
 pub fn to_rgba(hsv: &OpaqueColor<Hsv>) -> gtk::gdk::RGBA {

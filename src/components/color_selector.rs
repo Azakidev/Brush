@@ -22,15 +22,16 @@ use adw::{
     prelude::{RangeExt, WidgetExt},
     subclass::prelude::*,
 };
-use color::{Hsl, OpaqueColor};
+use color::{AlphaColor, Hsl, OpaqueColor};
 use gtk::{
     CssProvider, TemplateChild,
     gdk::Display,
     glib::{self, Properties, clone, object::ObjectExt},
+    prelude::EditableExt,
 };
 use std::cell::RefCell;
 
-use crate::components::utils::color::Hsv;
+use crate::components::utils::color::{Hsv, hsl_to_hsv};
 
 mod imp {
 
@@ -42,6 +43,8 @@ mod imp {
     #[properties(wrapper_type = super::BrushColorSelector)]
     #[template(resource = "/art/FatDawlf/Brush/color-selector.ui")]
     pub struct BrushColorSelector {
+        #[template_child]
+        pub hex_label: TemplateChild<gtk::Entry>,
         // Sliders
         #[template_child]
         pub hue_slider: TemplateChild<gtk::Scale>,
@@ -122,8 +125,11 @@ mod imp {
             let obj = self.obj();
 
             obj.link_sliders();
+            obj.link_hex_label();
+
             obj.setup_css_provider();
             obj.update_properties();
+            obj.set_hex();
         }
     }
     impl WidgetImpl for BrushColorSelector {}
@@ -157,9 +163,11 @@ impl BrushColorSelector {
                 let label = &imp.hue_label;
 
                 label.set_value(val);
+
                 if obj.imp().should_update.get() {
                     let _ = obj.activate_action("editor.set-color", None);
                     obj.update_properties();
+                    obj.set_hex();
                 }
             }
         ));
@@ -194,9 +202,11 @@ impl BrushColorSelector {
                 let label = &imp.saturation_label;
 
                 label.set_value(val);
+
                 if obj.imp().should_update.get() {
                     let _ = obj.activate_action("editor.set-color", None);
                     obj.update_properties();
+                    obj.set_hex();
                 }
             }
         ));
@@ -231,9 +241,11 @@ impl BrushColorSelector {
                 let label = &imp.value_label;
 
                 label.set_value(val);
+
                 if obj.imp().should_update.get() {
                     let _ = obj.activate_action("editor.set-color", None);
                     obj.update_properties();
+                    obj.set_hex();
                 }
             }
         ));
@@ -256,6 +268,22 @@ impl BrushColorSelector {
             .build();
     }
 
+    fn link_hex_label(&self) {
+        let hex_label = &self.imp().hex_label;
+
+        hex_label.connect_changed(clone!(
+            #[weak(rename_to = obj)]
+            self,
+            move |_e| {
+                let imp = obj.imp();
+
+                if imp.should_update.get() {
+                    obj.parse_hex();
+                }
+            }
+        ));
+    }
+
     pub fn color(&self) -> OpaqueColor<Hsv> {
         let hsl: OpaqueColor<Hsv> = color::OpaqueColor::new([self.h(), self.s(), self.v()]);
 
@@ -272,6 +300,53 @@ impl BrushColorSelector {
         self.imp().should_update.set(true);
 
         self.update_properties();
+    }
+
+    fn set_hex(&self) {
+        let imp = self.imp();
+        let hex_label = &imp.hex_label;
+        let color: OpaqueColor<Hsv> = OpaqueColor::new([self.h(), self.s(), self.v()]);
+
+        let [r, g, b, _] = color.to_rgba8().to_u8_array();
+        let text = format!("#{:02X}{:02X}{:02X}", r, g, b);
+
+        imp.should_update.set(false);
+        hex_label.set_text(&text);
+        imp.should_update.set(true);
+    }
+
+    fn parse_hex(&self) {
+        let imp = self.imp();
+        let hex_label = &imp.hex_label;
+
+        if hex_label.text().len() < 6 {
+            return;
+        }
+
+        let text = format!(
+            "#{}",
+            hex_label
+                .text()
+                .strip_prefix("#")
+                .unwrap_or(&hex_label.text())
+        );
+
+        if let Ok(color) = color::parse_color(&text) {
+            let rgb: AlphaColor<color::LinearSrgb> = color
+                .convert(color::ColorSpaceTag::LinearSrgb)
+                .to_alpha_color();
+            let hsl: OpaqueColor<Hsl> = rgb.convert().discard_alpha();
+
+            let [h, s, v] = hsl_to_hsv(hsl.components);
+
+            imp.should_update.set(false);
+            self.set_h(h);
+            self.set_s(s);
+            self.set_v(v);
+            let _ = self.activate_action("editor.set-color", None);
+            self.update_properties();
+            imp.should_update.set(true);
+        }
     }
 
     fn setup_css_provider(&self) {
