@@ -5,18 +5,11 @@ template $BrushColorSelector: Box {
   orientation: vertical;
   spacing: 4;
 
-  Adw.Bin wheel {
-    height-request: 200;
+  Adw.Bin {
+    height-request: 225;
+    margin-bottom: 4;
 
-    Label {
-      label: _("Color wheel here");
-      valign: center;
-      hexpand: true;
-
-      styles [
-        "title-2",
-      ]
-    }
+    $BrushColorWheel wheel {}
   }
 
   Box sliders {
@@ -54,6 +47,7 @@ template $BrushColorSelector: Box {
       Gtk.SpinButton hue_label {
         numeric: true;
         width-chars: 3;
+        wrap: true;
 
         styles [
           "compact",

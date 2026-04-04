@@ -86,34 +86,11 @@ fn hsv_to_srgb([h, s, v]: [f32; 3]) -> [f32; 3] {
     [r_temp + m, g_temp + m, b_temp + m]
 }
 
-// FIXME: Not converting properly from hex codes
 fn srgb_to_hsv(src: [f32; 3]) -> [f32; 3] {
-    let [r, g, b] = src;
+    let rgb: OpaqueColor<Srgb> =  OpaqueColor::new(src);
+    let hsl: OpaqueColor<Hsl> = rgb.convert();
 
-    let max = r.max(g.max(b));
-    let min = r.min(g.min(b));
-    let delta = max - min;
-
-    let v = max;
-    let s = if max == 0f32 { 0f32 } else { delta / max };
-
-    const EPSILON: f32 = 1e-6;
-    let mut h = if delta > EPSILON {
-        0f32
-    } else if max == r {
-        60f32 * (((g - b) / delta).rem_euclid(6f32))
-    } else if max == g {
-        60f32 * (((b - r) / delta) + 2f32)
-    } else {
-        60f32 * (((r - g) / delta) + 4f32)
-    };
-
-    // Ensure hue is positive
-    if h < 0f32 {
-        h += 360f32;
-    }
-
-    [h, s * 100f32, v * 100f32]
+    hsl_to_hsv(hsl.components)
 }
 
 fn hsv_to_hsl(hsv: [f32; 3]) -> [f32; 3] {
@@ -132,7 +109,7 @@ fn hsv_to_hsl(hsv: [f32; 3]) -> [f32; 3] {
     [h, s_l * 100f32, l * 100f32]
 }
 
-pub fn hsl_to_hsv([h, s_l, l]: [f32; 3]) -> [f32; 3] {
+fn hsl_to_hsv([h, s_l, l]: [f32; 3]) -> [f32; 3] {
     let s_l = s_l * 0.01;
     let l = l * 0.01;
 

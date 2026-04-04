@@ -29,13 +29,16 @@ use gtk::{
     glib::{self, Properties, clone, object::ObjectExt},
     prelude::EditableExt,
 };
-use std::cell::RefCell;
+use std::{
+    cell::{Cell, RefCell},
+    rc::Rc,
+};
 
-use crate::components::utils::color::{Hsv, hsl_to_hsv};
+use crate::components::utils::color::Hsv;
 
 mod imp {
 
-    use std::{cell::Cell, rc::Rc};
+    use crate::components::color_wheel::BrushColorWheel;
 
     use super::*;
 
@@ -43,6 +46,8 @@ mod imp {
     #[properties(wrapper_type = super::BrushColorSelector)]
     #[template(resource = "/art/FatDawlf/Brush/color-selector.ui")]
     pub struct BrushColorSelector {
+        #[template_child]
+        pub wheel: TemplateChild<BrushColorWheel>,
         #[template_child]
         pub hex_label: TemplateChild<gtk::Entry>,
         // Sliders
@@ -126,6 +131,7 @@ mod imp {
 
             obj.link_sliders();
             obj.link_hex_label();
+            obj.link_wheel();
 
             obj.setup_css_provider();
             obj.update_properties();
@@ -284,6 +290,26 @@ impl BrushColorSelector {
         ));
     }
 
+    fn link_wheel(&self) {
+        let imp = self.imp();
+        let wheel = imp.wheel.get();
+
+        self.bind_property("h", &wheel, "h")
+            .bidirectional()
+            .sync_create()
+            .build();
+
+        self.bind_property("s", &wheel, "s")
+            .bidirectional()
+            .sync_create()
+            .build();
+
+        self.bind_property("v", &wheel, "v")
+            .bidirectional()
+            .sync_create()
+            .build();
+    }
+
     pub fn color(&self) -> OpaqueColor<Hsv> {
         let hsl: OpaqueColor<Hsv> = color::OpaqueColor::new([self.h(), self.s(), self.v()]);
 
@@ -335,9 +361,9 @@ impl BrushColorSelector {
             let rgb: AlphaColor<color::LinearSrgb> = color
                 .convert(color::ColorSpaceTag::LinearSrgb)
                 .to_alpha_color();
-            let hsl: OpaqueColor<Hsl> = rgb.convert().discard_alpha();
+            let hsv: OpaqueColor<Hsv> = rgb.convert().discard_alpha();
 
-            let [h, s, v] = hsl_to_hsv(hsl.components);
+            let [h, s, v] = hsv.components;
 
             imp.should_update.set(false);
             self.set_h(h);

@@ -29,6 +29,7 @@ pub mod canvas;
 // Colors
 pub mod color_chip;
 pub mod color_selector;
+pub mod color_wheel;
 // Layers
 pub mod layer_item;
 pub mod layer_tree;
