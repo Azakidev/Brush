@@ -123,9 +123,16 @@ impl BrushLayerTree {
     }
 
     fn connect_dropdown(&self) {
-        self.imp().blend_mode.connect_selected_notify(move |d| {
-            let val = d.selected();
-            let _ = d.activate_action("editor.set-layer-blend", Some(&val.to_variant()));
-        });
+        self.imp().blend_mode.connect_selected_notify(clone!(
+            #[weak(rename_to = obj)]
+            self,
+            move |d| {
+                let val = d.selected();
+                let should_update = obj.imp().should_update.get();
+                if should_update {
+                    let _ = d.activate_action("editor.set-layer-blend", Some(&val.to_variant()));
+                }
+            }
+        ));
     }
 }

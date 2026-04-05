@@ -27,7 +27,6 @@ use gtk::{
 };
 use libloading::Library;
 
-use glow::HasContext;
 use std::{
     cell::{Cell, OnceCell, RefCell},
     collections::HashMap,
@@ -328,12 +327,6 @@ mod imp {
                         if let Some(shader_manager) = obj.gl_shader_manager.get() {
                             unsafe {
                                 shader_manager.borrow().destroy(gl);
-                            }
-                        }
-
-                        if let Some(vao) = obj.gl_vao.get() {
-                            unsafe {
-                                gl.delete_vertex_array(*vao);
                             }
                         }
                     };

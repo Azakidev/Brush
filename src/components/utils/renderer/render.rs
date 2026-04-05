@@ -121,14 +121,13 @@ pub fn render_pass(canvas: &BrushCanvas, area: &gtk::GLArea) -> glib::Propagatio
         let root_mvp = glam::Mat4::orthographic_lh(0.0, pw as f32, ph as f32, 0.0, -1.0, 1.0);
 
         render_layer_tree(
-            &mut cache,
             gl,
-            &mut project.layers,
             &mut shaders,
-            &root_mvp,
             root_fbo.framebuffer,
-            pw,
-            ph,
+            &root_mvp,
+            (pw, ph),
+            &mut project.layers,
+            &mut cache,
         );
 
         // Composite to camera
@@ -165,14 +164,13 @@ pub fn render_pass(canvas: &BrushCanvas, area: &gtk::GLArea) -> glib::Propagatio
 }
 
 unsafe fn render_layer_tree(
-    cache: &mut HashMap<Uuid, LayerBuffer>,
     gl: &glow::Context,
-    layers: &mut [Layer],
     shaders: &mut ShaderManager,
-    parent_mvp: &glam::Mat4,
     parent_fbo: NativeFramebuffer,
-    parent_w: i32,
-    parent_h: i32,
+    parent_mvp: &glam::Mat4,
+    (parent_w, parent_h): (i32, i32),
+    layers: &mut [Layer],
+    cache: &mut HashMap<Uuid, LayerBuffer>,
 ) {
     let tree: Vec<&mut Layer> = layers.iter_mut().rev().collect();
     for layer in tree {
@@ -245,14 +243,13 @@ unsafe fn render_layer_tree(
                     if let Some(children) = layer.children_mut() {
                         unsafe {
                             render_layer_tree(
-                                cache,
                                 gl,
-                                children,
                                 shaders,
-                                &group_mvp,
                                 group_buffer.framebuffer,
-                                gw,
-                                gh,
+                                &group_mvp,
+                                (gw, gh),
+                                children,
+                                cache,
                             );
                         }
                     }
@@ -270,14 +267,13 @@ unsafe fn render_layer_tree(
                     if let Some(children) = layer.children_mut() {
                         unsafe {
                             render_layer_tree(
-                                cache,
                                 gl,
-                                children,
                                 shaders,
-                                parent_mvp,
                                 parent_fbo,
-                                parent_w,
-                                parent_h,
+                                parent_mvp,
+                                (parent_w, parent_h),
+                                children,
+                                cache,
                             );
                         }
                     }

@@ -23,16 +23,15 @@ use adw::{
     subclass::prelude::*,
 };
 use gtk::{
-    gdk, gio,
-    glib::{
+    gdk, gio, glib::{
         self, VariantTy, WeakRef, clone,
         object::{Cast, ObjectExt},
         property::PropertySet,
         types::StaticType,
         variant::ToVariant,
-    },
-    prelude::BoxExt,
+    }, prelude::BoxExt
 };
+use strum::IntoEnumIterator;
 use std::{
     cell::{Cell, RefCell},
     collections::HashMap,
@@ -51,7 +50,7 @@ use crate::{
         layer_tree::BrushLayerTree,
         utils::{color::to_rgba, editor_state::BrushEditorState},
     },
-    data::project::BrushProject,
+    data::{blend_modes::BlendMode, project::BrushProject},
 };
 
 mod imp {
@@ -357,6 +356,7 @@ mod imp {
 
                             let child = page.child();
                             if let Ok(canvas_tab) = child.downcast::<BrushCanvas>() {
+                                canvas_tab.imp().layer_widget_cache.borrow_mut().clear();
                                 obj.obj().sync_project(&canvas_tab);
                             }
                         }
@@ -526,13 +526,19 @@ impl BrushEditor {
         let layer_tree = imp.layer_tree.imp();
         // Widgets
         let opacity_slider = &layer_tree.layer_opacity;
+        let blend_mode_dropdown = &layer_tree.blend_mode;
         // Values
         if let Some(active_id) = *imp.current_layer.borrow()
             && let Some(layer) = project.find_layer(active_id)
         {
             let opacity = layer.opacity();
+            let blend_mode = layer.blend_mode();
+            let blend_idx = BlendMode::iter().position(|b| b == blend_mode).unwrap();
+
+            // Update
             layer_tree.should_update.set(false);
             opacity_slider.set_value(opacity as f64);
+            blend_mode_dropdown.set_selected(blend_idx as u32);
             layer_tree.should_update.set(true);
         }
     }
