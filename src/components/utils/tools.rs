@@ -18,13 +18,24 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-#[derive(Debug, PartialEq, Clone, Copy)]
+use strum_macros::{Display, EnumIter, VariantNames};
+
+#[derive(Debug, PartialEq, Clone, Copy, Display, VariantNames, EnumIter)]
 pub enum BrushTool {
+    #[strum(to_string = "move")]
     Move,
+    #[strum(to_string = "brush")]
     Brush,
+    #[strum(to_string = "fill")]
+    Fill,
+    #[strum(to_string = "box")]
     Box,
+    #[strum(to_string = "ellipse")]
     Ellipse,
+    #[strum(to_string = "box_select")]
     SelectBox,
+    #[strum(to_string = "lasso_select")]
     SelectLasso,
+    #[strum(to_string = "wand_select")]
     SelectWand,
 }

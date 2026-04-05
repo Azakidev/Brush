@@ -21,6 +21,7 @@
 use std::cell::RefCell;
 
 use color::OpaqueColor;
+use strum::IntoEnumIterator;
 
 use crate::components::utils::{color::Hsv, tools::BrushTool};
 
@@ -60,17 +61,9 @@ impl BrushEditorState {
     }
 
     pub fn set_tool(&self, tool: &str) {
-        let tool = match tool {
-            "move" => BrushTool::Move,
-            "brush" => BrushTool::Brush,
-            "box" => BrushTool::Box,
-            "ellipse" => BrushTool::Ellipse,
-            "box_select" => BrushTool::SelectBox,
-            "lasso_select" => BrushTool::SelectLasso,
-            "wand_select" => BrushTool::SelectWand,
-            _ => unreachable!(),
-        };
-        self.tool.replace(tool);
+        if let Some(tool) = BrushTool::iter().find(|t| t.to_string() == tool) {
+            self.tool.replace(tool);
+        }
     }
 
     pub fn set_brush_opacity(&self, value: f32) {

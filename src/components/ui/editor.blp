@@ -50,6 +50,30 @@ template $BrushEditor: Box {
               can-focus: false;
             }
           }
+          [start]
+          Box {
+            styles [
+              "linked",
+            ]
+
+            Button undo {
+              icon-name: "edit-undo-symbolic";
+              action-name: "editor.undo";
+              can-focus: false;
+            }
+
+            Button redo {
+              icon-name: "edit-redo-symbolic";
+              action-name: "editor.redo";
+              can-focus: false;
+            }
+          }
+
+          [start]
+          ToggleButton eraser_toggle {
+            icon-name: "eraser3-symbolic";
+            can-focus: false;
+          }
 
           [end]
           MenuButton {
@@ -106,14 +130,6 @@ template $BrushEditor: Box {
               orientation: vertical;
               hexpand: true;
 
-              Label {
-                label: _("Left Bar");
-
-                styles [
-                  "title-2",
-                ]
-              }
-
               Box {
                 orientation: vertical;
                 margin-top: 6;
@@ -153,8 +169,9 @@ template $BrushEditor: Box {
                         update-policy: if_valid;
                         numeric: true;
                         focusable: false;
+                        tooltip-text: _("Brush opacity");
 
-                        adjustment: Gtk.Adjustment {
+                        adjustment: Adjustment {
                           lower: 0;
                           upper: 100;
                           value: 100;
@@ -170,15 +187,16 @@ template $BrushEditor: Box {
                       }
                     }
 
-                    Gtk.Scale brush_opacity {
+                    Scale brush_opacity {
                       orientation: horizontal;
                       width-request: 150;
                       hexpand: true;
                       draw-value: false;
                       value-pos: right;
                       can-focus: false;
+                      tooltip-text: _("Brush opacity");
 
-                      adjustment: Gtk.Adjustment {
+                      adjustment: Adjustment {
                         lower: 0;
                         upper: 1;
                         value: 1;
@@ -202,7 +220,7 @@ template $BrushEditor: Box {
                       orientation: horizontal;
 
                       Label {
-                        label: _("Brush scale");
+                        label: _("Brush size");
                         hexpand: true;
                         halign: start;
                       }
@@ -212,8 +230,9 @@ template $BrushEditor: Box {
                         update-policy: if_valid;
                         numeric: true;
                         focusable: false;
+                        tooltip-text: _("Brush size");
 
-                        adjustment: Gtk.Adjustment {
+                        adjustment: Adjustment {
                           lower: 1;
                           upper: 1000;
                           value: 40;
@@ -229,15 +248,16 @@ template $BrushEditor: Box {
                       }
                     }
 
-                    Gtk.Scale brush_size {
+                    Scale brush_size {
                       orientation: horizontal;
                       width-request: 150;
                       hexpand: true;
                       draw-value: false;
                       value-pos: right;
                       can-focus: false;
+                      tooltip-text: _("Brush size");
 
-                      adjustment: Gtk.Adjustment {
+                      adjustment: Adjustment {
                         lower: 0.0001;
                         upper: 1;
                         value: 0.4;
@@ -300,31 +320,56 @@ template $BrushEditor: Box {
                   margin-end: 8;
 
                   Box {
-                    orientation: horizontal;
+                    orientation: vertical;
                     spacing: 4;
 
-                    Gtk.ToggleButton {
-                      halign: start;
-                      icon-name: "move-tool-symbolic";
-                      action-name: "editor.change-tool";
-                      action-target: "'move'";
-                      can-focus: false;
+                    Box {
+                      orientation: horizontal;
+                      spacing: 4;
 
-                      styles [
-                        "osd",
-                      ]
+                      ToggleButton {
+                        halign: start;
+                        icon-name: "move-tool-symbolic";
+                        action-name: "editor.change-tool";
+                        action-target: "'move'";
+                        can-focus: false;
+                        tooltip-text: _("Pan tool");
+
+                        styles [
+                          "osd",
+                        ]
+                      }
                     }
 
-                    Gtk.ToggleButton {
-                      halign: end;
-                      icon-name: "paintbrush-symbolic";
-                      action-name: "editor.change-tool";
-                      action-target: "'brush'";
-                      can-focus: false;
+                    Box {
+                      orientation: horizontal;
+                      spacing: 4;
 
-                      styles [
-                        "osd",
-                      ]
+                      ToggleButton {
+                        halign: end;
+                        icon-name: "paintbrush-symbolic";
+                        action-name: "editor.change-tool";
+                        action-target: "'brush'";
+                        can-focus: false;
+                        tooltip-text: _("Brush tool");
+
+                        styles [
+                          "osd",
+                        ]
+                      }
+
+                      ToggleButton {
+                        halign: start;
+                        icon-name: "fill-tool-symbolic";
+                        action-name: "editor.change-tool";
+                        action-target: "'fill'";
+                        can-focus: false;
+                        tooltip-text: _("Fill tool");
+
+                        styles [
+                          "osd",
+                        ]
+                      }
                     }
                   }
 
@@ -332,24 +377,26 @@ template $BrushEditor: Box {
                     orientation: horizontal;
                     spacing: 4;
 
-                    Gtk.ToggleButton {
+                    ToggleButton {
                       halign: start;
                       icon-name: "box-outline-symbolic";
                       action-name: "editor.change-tool";
                       action-target: "'box'";
                       can-focus: false;
+                      tooltip-text: _("Box tool");
 
                       styles [
                         "osd",
                       ]
                     }
 
-                    Gtk.ToggleButton {
+                    ToggleButton {
                       halign: end;
                       icon-name: "circle-anchor-center-symbolic";
                       action-name: "editor.change-tool";
                       action-target: "'ellipse'";
                       can-focus: false;
+                      tooltip-text: _("Ellipse tool");
 
                       styles [
                         "osd",
@@ -365,24 +412,26 @@ template $BrushEditor: Box {
                       orientation: horizontal;
                       spacing: 4;
 
-                      Gtk.ToggleButton {
+                      ToggleButton {
                         halign: start;
                         icon-name: "box-dotted-symbolic";
                         action-name: "editor.change-tool";
                         action-target: "'box_select'";
                         can-focus: false;
+                        tooltip-text: _("Box selection tool");
 
                         styles [
                           "osd",
                         ]
                       }
 
-                      Gtk.ToggleButton {
+                      ToggleButton {
                         halign: end;
                         icon-name: "circle-dotted-symbolic";
                         action-name: "editor.change-tool";
                         action-target: "'lasso_select'";
                         can-focus: false;
+                        tooltip-text: _("Lasso selection tool");
 
                         styles [
                           "osd",
@@ -394,12 +443,13 @@ template $BrushEditor: Box {
                       orientation: horizontal;
                       spacing: 4;
 
-                      Gtk.ToggleButton {
+                      ToggleButton {
                         halign: start;
                         icon-name: "magic-wand-symbolic";
                         action-name: "editor.change-tool";
                         action-target: "'wand_select'";
                         can-focus: false;
+                        tooltip-text: _("Fill selection tool");
 
                         styles [
                           "osd",

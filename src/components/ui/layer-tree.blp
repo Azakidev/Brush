@@ -4,7 +4,7 @@ template $BrushLayerTree: Box {
   vexpand: true;
   orientation: vertical;
   margin-top: 4;
-  spacing: 4;
+  spacing: 8;
 
   Label {
     label: _("Opacity");
@@ -12,7 +12,7 @@ template $BrushLayerTree: Box {
 
   }
 
-  Gtk.Scale layer_opacity {
+  Scale layer_opacity {
     orientation: horizontal;
     width-request: 150;
     hexpand: true;
@@ -20,7 +20,7 @@ template $BrushLayerTree: Box {
     value-pos: right;
     can-focus: false;
 
-    adjustment: Gtk.Adjustment {
+    adjustment: Adjustment {
       lower: 0;
       upper: 1;
       value: 1;
@@ -33,6 +33,8 @@ template $BrushLayerTree: Box {
       "filled_scale",
     ]
   }
+
+  DropDown blend_mode {}
 
   ScrolledWindow {
     has-frame: true;

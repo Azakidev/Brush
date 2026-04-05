@@ -42,4 +42,9 @@ impl LayerParameter for RefLayerParameters {
     fn set_visible(&mut self, visible: bool) {
         self.visible = visible;
     }
+
+    fn is_lock(&self) -> bool {
+        false
+    }
+    fn set_lock(&mut self, _lock: bool) {} // No-op
 }

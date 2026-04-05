@@ -27,6 +27,7 @@ template $BrushColorSelector: Box {
         value-pos: right;
         can-focus: false;
         round-digits: 0;
+        tooltip-text: _("Hue");
 
         adjustment: Gtk.Adjustment hue_a {
           lower: 0;
@@ -48,6 +49,7 @@ template $BrushColorSelector: Box {
         numeric: true;
         width-chars: 3;
         wrap: true;
+        tooltip-text: _("Hue");
 
         styles [
           "compact",
@@ -76,6 +78,7 @@ template $BrushColorSelector: Box {
         value-pos: right;
         can-focus: false;
         round-digits: 0;
+        tooltip-text: _("Saturation");
 
         adjustment: Gtk.Adjustment saturation_a {
           lower: 0;
@@ -96,6 +99,7 @@ template $BrushColorSelector: Box {
       Gtk.SpinButton saturation_label {
         numeric: true;
         width-chars: 3;
+        tooltip-text: _("Saturation");
 
         styles [
           "compact",
@@ -124,6 +128,7 @@ template $BrushColorSelector: Box {
         value-pos: right;
         can-focus: false;
         round-digits: 0;
+        tooltip-text: _("Value");
 
         adjustment: Gtk.Adjustment value_a {
           lower: 0;
@@ -144,6 +149,7 @@ template $BrushColorSelector: Box {
       Gtk.SpinButton value_label {
         numeric: true;
         width-chars: 3;
+        tooltip-text: _("Value");
 
         styles [
           "compact",
@@ -175,6 +181,7 @@ template $BrushColorSelector: Box {
         xalign: 1;
         width-chars: 9;
         max-width-chars: 7;
+        tooltip-text: _("Color hexadecimal code");
 
         styles ["compact"]
       }

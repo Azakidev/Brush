@@ -50,12 +50,15 @@ use crate::{
             tools::BrushTool,
         },
     },
-    data::{layer::Layer, project::BrushProject},
+    data::{blend_modes::BlendMode, layer::Layer, project::BrushProject},
 };
 
 mod imp {
 
     use gtk::glib::WeakRef;
+    use strum::IntoEnumIterator;
+
+    use crate::data::blend_modes::BlendMode;
 
     use super::*;
 
@@ -91,6 +94,16 @@ mod imp {
         const NAME: &'static str = "BrushCanvas";
         type Type = super::BrushCanvas;
         type ParentType = adw::Bin;
+
+        fn new() -> Self {
+            Self {
+                zoom: Cell::new(1f32),
+                position: Cell::new((0f32, 0f32)),
+                rotation: Cell::new(0f32),
+                active_layer: Cell::new(None),
+                ..Default::default()
+            }
+        }
 
         fn class_init(klass: &mut Self::Class) {
             klass.bind_template();
@@ -146,6 +159,40 @@ mod imp {
                     }
                 },
             );
+
+            klass.install_action(
+                "canvas.set-layer-blend",
+                Some(VariantTy::UINT32),
+                |canvas, _, arg| {
+                    if let Some(var) = arg
+                        && let Some(val) = var.get::<u32>()
+                        && let Some(blend_mode) =
+                            BlendMode::iter().take(val as usize + 1).next_back()
+                    {
+                        canvas.set_layer_blend(blend_mode);
+                    }
+                },
+            );
+
+            klass.install_action("canvas.toggle-visible", None, |canvas, _, _| {
+                canvas.toggle_visible();
+            });
+
+            klass.install_action("canvas.toggle-alpha-clip", None, |canvas, _, _| {
+                canvas.toggle_alpha_clip();
+            });
+
+            klass.install_action("canvas.toggle-alpha-lock", None, |canvas, _, _| {
+                canvas.toggle_alpha_lock();
+            });
+
+            klass.install_action("canvas.toggle-passthrough", None, |canvas, _, _| {
+                canvas.toggle_passthrough();
+            });
+
+            klass.install_action("canvas.toggle-lock", None, |canvas, _, _| {
+                canvas.toggle_lock();
+            });
 
             klass.install_action("canvas.zoom-out", None, move |canvas, _, _| {
                 canvas.zoom_by(-0.05f32);
@@ -208,14 +255,6 @@ mod imp {
             obj.setup_drag_controller();
             obj.setup_zoom_controller();
             obj.setup_rotate_controller();
-
-            // Setup default values
-            {
-                self.zoom.set(1.0);
-                self.position.set((0.0, 0.0));
-                self.rotation.set(0.0);
-                self.active_layer.set(None);
-            }
 
             // Setup canvas
             {
@@ -701,7 +740,7 @@ impl BrushCanvas {
         self.imp().canvas.queue_draw();
     }
 
-    pub fn rename_layer(&self, uuid: Uuid, new_name: String) {
+    fn rename_layer(&self, uuid: Uuid, new_name: String) {
         let mut project = self.imp().project.borrow_mut();
         let mut widget_cache = self.imp().layer_widget_cache.borrow_mut();
         project.rename_layer(uuid, new_name);
@@ -709,7 +748,7 @@ impl BrushCanvas {
         project.remove_stale_widgets(uuid, &mut widget_cache);
     }
 
-    pub fn set_layer_opacity(&self, opacity: f32) {
+    fn set_layer_opacity(&self, opacity: f32) {
         let imp = self.imp();
         let mut project = imp.project.borrow_mut();
         let mut widget_cache = self.imp().layer_widget_cache.borrow_mut();
@@ -723,19 +762,90 @@ impl BrushCanvas {
         imp.canvas.queue_draw();
     }
 
+    fn set_layer_blend(&self, blend_mode: BlendMode) {
+        let imp = self.imp();
+        let mut project = imp.project.borrow_mut();
+        let mut widget_cache = self.imp().layer_widget_cache.borrow_mut();
+
+        if let Some(active_id) = self.imp().active_layer.get() {
+            if let Some(active_layer) = project.find_layer_mut(active_id) {
+                active_layer.set_blend_mode(blend_mode);
+            }
+            project.remove_stale_widgets(active_id, &mut widget_cache);
+        }
+        imp.canvas.queue_draw();
+    }
+
+    fn toggle_visible(&self) {
+        let imp = self.imp();
+        let mut project = imp.project.borrow_mut();
+
+        if let Some(active_id) = imp.active_layer.get()
+            && let Some(layer) = project.find_layer_mut(active_id)
+        {
+            layer.set_visible(!layer.visible());
+        }
+        imp.canvas.queue_draw();
+    }
+
+    fn toggle_alpha_clip(&self) {
+        let imp = self.imp();
+        let mut project = imp.project.borrow_mut();
+
+        if let Some(active_id) = imp.active_layer.get()
+            && let Some(layer) = project.find_layer_mut(active_id)
+        {
+            layer.set_alpha_clip(!layer.alpha_clip());
+        }
+        imp.canvas.queue_draw();
+    }
+    fn toggle_alpha_lock(&self) {
+        let imp = self.imp();
+        let mut project = imp.project.borrow_mut();
+
+        if let Some(active_id) = imp.active_layer.get()
+            && let Some(layer) = project.find_layer_mut(active_id)
+        {
+            layer.set_alpha_lock(!layer.alpha_lock());
+        }
+        imp.canvas.queue_draw();
+    }
+    fn toggle_passthrough(&self) {
+        let imp = self.imp();
+        let mut project = imp.project.borrow_mut();
+
+        if let Some(active_id) = imp.active_layer.get()
+            && let Some(layer) = project.find_layer_mut(active_id)
+        {
+            layer.set_passthrough(!layer.passthrough());
+        }
+        imp.canvas.queue_draw();
+    }
+    fn toggle_lock(&self) {
+        let imp = self.imp();
+        let mut project = imp.project.borrow_mut();
+
+        if let Some(active_id) = imp.active_layer.get()
+            && let Some(layer) = project.find_layer_mut(active_id)
+        {
+            layer.set_lock(!layer.lock());
+        }
+        imp.canvas.queue_draw();
+    }
+
     // Viewport control
-    pub fn zoom_by(&self, factor: f32) {
+    fn zoom_by(&self, factor: f32) {
         let new_zoom = (self.imp().zoom.get() + factor).clamp(0.1, 10f32);
         self.imp().zoom.set(new_zoom);
         self.imp().canvas.queue_draw();
     }
 
-    pub fn zoom_to(&self, zoom: f32) {
+    fn zoom_to(&self, zoom: f32) {
         self.imp().zoom.set(zoom.clamp(0.1, 10f32));
         self.imp().canvas.queue_draw();
     }
 
-    pub fn move_by(&self, dx: f32, dy: f32) {
+    fn move_by(&self, dx: f32, dy: f32) {
         let (x, y) = self.imp().position.get();
         let zoom = self.zoom();
 
@@ -743,23 +853,23 @@ impl BrushCanvas {
         self.imp().canvas.queue_draw();
     }
 
-    pub fn move_to(&self, x: f32, y: f32) {
+    fn move_to(&self, x: f32, y: f32) {
         self.imp().position.set((x, y));
         self.imp().canvas.queue_draw();
     }
 
-    pub fn rotate_by(&self, radians: f32) {
+    fn rotate_by(&self, radians: f32) {
         let new_rot = (self.imp().rotation.get() + radians) % (PI * 2f32);
         self.imp().rotation.set(new_rot);
         self.imp().canvas.queue_draw();
     }
 
-    pub fn rotate_to(&self, radians: f32) {
+    fn rotate_to(&self, radians: f32) {
         self.imp().rotation.set(radians);
         self.imp().canvas.queue_draw();
     }
 
-    pub fn zoom_to_fit(&self) {
+    fn zoom_to_fit(&self) {
         let imp = self.imp();
         let (canvas_width, canvas_height) = (
             imp.project.borrow().width as f32,
@@ -1144,17 +1254,22 @@ impl BrushCanvas {
         let (px, py) = self.imp().mouse_pos.get();
         let (cx, cy) = self.screen_to_canvas(&project, px as f64, py as f64);
 
-        if let Some(active_id) = self.imp().active_layer.get()
-            && let Some(layer) = project.find_layer_mut(active_id)
-        {
-            // TODO: Brush engine
-            let dynamic_size = (*base_size as f64 * pressure).clamp(1f64, 1000f64) as i32;
+        if let Some(active_id) = self.imp().active_layer.get() {
+            if project.is_layer_in_lock(active_id) {
+                // Don't draw if locked or invisible
+                return;
+            }
 
-            let color: AlphaColor<Oklab> = color.convert();
+            if let Some(layer) = project.find_layer_mut(active_id) {
+                // TODO: Brush engine
+                let dynamic_size = (*base_size as f64 * pressure).clamp(1f64, 1000f64) as i32;
 
-            layer.draw_brush_dab(cx as i32, cy as i32, dynamic_size, color);
+                let color: AlphaColor<Oklab> = color.convert();
 
-            self.imp().canvas.queue_render();
+                layer.draw_brush_dab(cx as i32, cy as i32, dynamic_size, color);
+            }
         }
+
+        self.imp().canvas.queue_render();
     }
 }

@@ -238,12 +238,12 @@ impl BrushColorWheel {
             move |_, _, _, _| {
                 let (x, y) = obj.imp().mouse_pos.get();
 
-                if obj.test_wheel((x as f32, y as f32)) {
+                if obj.test_wheel((x, y)) {
                     let hue = obj.to_wheel_angle((x, y));
                     obj.set_h(hue);
                 }
 
-                if obj.test_triangle((x as f32, y as f32)) {
+                if obj.test_triangle((x, y)) {
                     let (w1, w2, w3) = obj.to_triangle_coords((x, y));
 
                     let s = (w3 / (w2 + w3)) * 100f32;
@@ -271,11 +271,11 @@ impl BrushColorWheel {
             move |_, _x, _y| {
                 let (x, y) = obj.imp().mouse_pos.get();
 
-                if obj.test_wheel((x as f32, y as f32)) {
+                if obj.test_wheel((x, y)) {
                     state.set(Some(ColorWheelDragState::H));
                 }
 
-                if obj.test_triangle((x as f32, y as f32)) {
+                if obj.test_triangle((x, y)) {
                     state.set(Some(ColorWheelDragState::SV));
                 }
             }
@@ -362,9 +362,7 @@ impl BrushColorWheel {
             rad += 2f32 * std::f32::consts::PI;
         }
 
-        let deg = rad.to_degrees();
-
-        deg
+        rad.to_degrees()
     }
 
     fn coodinates_from_hue(&self) -> (f32, f32) {
@@ -416,8 +414,10 @@ impl BrushColorWheel {
 
         let y = y_top + (y_bottom - y_top) * v;
 
-        let x_left_at_y = cx - (y - y_top) * (30f32.to_radians().cos() / (1.0 + 30f32.to_radians().sin()));
-        let x_right_at_y = cx + (y - y_top) * (30f32.to_radians().cos() / (1.0 + 30f32.to_radians().sin()));
+        let x_left_at_y =
+            cx - (y - y_top) * (30f32.to_radians().cos() / (1.0 + 30f32.to_radians().sin()));
+        let x_right_at_y =
+            cx + (y - y_top) * (30f32.to_radians().cos() / (1.0 + 30f32.to_radians().sin()));
 
         let x = x_left_at_y + (x_right_at_y - x_left_at_y) * s;
 
@@ -431,7 +431,7 @@ impl BrushColorWheel {
         let (x, y) = p;
 
         let center = Point::new(cx, cy);
-        let pointer = Point::new(x as f32, y as f32);
+        let pointer = Point::new(x, y);
 
         let (distance, _, _) = pointer.distance(&center);
 

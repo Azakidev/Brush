@@ -148,6 +148,16 @@ impl BrushProject {
         }
     }
 
+    pub fn is_layer_in_lock(&self, layer: Uuid) -> bool {
+        if let Some(layer) = self.find_layer(layer) {
+            return layer.lock() || !layer.visible();
+        }
+        if let Some(parent) = self.find_parent(layer) {
+            return self.is_layer_in_lock(parent.id());
+        }
+        false
+    }
+
     pub fn remove_stale_widgets(
         &self,
         layer: Uuid,

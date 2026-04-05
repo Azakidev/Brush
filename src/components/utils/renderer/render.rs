@@ -225,43 +225,62 @@ unsafe fn render_layer_tree(
 
                 let group_buffer = get_or_create_buffer(cache, gl, layer);
 
-                unsafe {
-                    // Bind and set viewport
-                    gl.bind_framebuffer(glow::FRAMEBUFFER, Some(group_buffer.framebuffer));
-                    gl.viewport(0, 0, gw, gh);
-                    // Clear
-                    gl.clear_color(0.0, 0.0, 0.0, 0.0);
-                    gl.clear(glow::COLOR_BUFFER_BIT);
-                }
-
-                let group_proj =
-                    glam::Mat4::orthographic_lh(0.0, gw as f32, gh as f32, 0.0, -1.0, 1.0);
-
-                // Shift children so (gx, gy) becomes (0,0) inside the FBO
-                let group_view = glam::Mat4::from_translation(glam::vec3(gx, gy, 0.0));
-                let group_mvp = group_proj * group_view;
-
-                if let Some(children) = layer.children_mut() {
+                if !layer.passthrough() {
                     unsafe {
-                        render_layer_tree(
-                            cache,
-                            gl,
-                            children,
-                            shaders,
-                            &group_mvp,
-                            group_buffer.framebuffer,
-                            gw,
-                            gh,
-                        );
+                        // Bind and set viewport
+                        gl.bind_framebuffer(glow::FRAMEBUFFER, Some(group_buffer.framebuffer));
+                        gl.viewport(0, 0, gw, gh);
+                        // Clear
+                        gl.clear_color(0.0, 0.0, 0.0, 0.0);
+                        gl.clear(glow::COLOR_BUFFER_BIT);
                     }
-                }
 
-                unsafe {
-                    // Unbind and switch to previous viewport
-                    gl.bind_framebuffer(glow::FRAMEBUFFER, Some(parent_fbo));
-                    gl.viewport(0, 0, parent_w, parent_h);
+                    let group_proj =
+                        glam::Mat4::orthographic_lh(0.0, gw as f32, gh as f32, 0.0, -1.0, 1.0);
 
-                    composite_buffer(gl, &group_buffer, layer, shaders, parent_mvp);
+                    // Shift children so (gx, gy) becomes (0,0) inside the FBO
+                    let group_view = glam::Mat4::from_translation(glam::vec3(gx, gy, 0.0));
+                    let group_mvp = group_proj * group_view;
+
+                    if let Some(children) = layer.children_mut() {
+                        unsafe {
+                            render_layer_tree(
+                                cache,
+                                gl,
+                                children,
+                                shaders,
+                                &group_mvp,
+                                group_buffer.framebuffer,
+                                gw,
+                                gh,
+                            );
+                        }
+                    }
+
+                    unsafe {
+                        // Unbind and switch to previous viewport
+                        gl.bind_framebuffer(glow::FRAMEBUFFER, Some(parent_fbo));
+                        gl.viewport(0, 0, parent_w, parent_h);
+
+                        composite_buffer(gl, &group_buffer, layer, shaders, parent_mvp);
+                    }
+                } else {
+                    // When passthrough is active, layers are rendered on the parent directly
+                    // without taking into account the group buffer
+                    if let Some(children) = layer.children_mut() {
+                        unsafe {
+                            render_layer_tree(
+                                cache,
+                                gl,
+                                children,
+                                shaders,
+                                parent_mvp,
+                                parent_fbo,
+                                parent_w,
+                                parent_h,
+                            );
+                        }
+                    }
                 }
             }
             Layer::Fill(_) => {
@@ -338,7 +357,18 @@ pub unsafe fn composite_buffer(
         }
 
         gl.enable(glow::BLEND);
-        gl.blend_func(glow::ONE, glow::ONE_MINUS_SRC_ALPHA);
+
+        if layer.alpha_clip() {
+            gl.blend_func_separate(
+                glow::DST_ALPHA,
+                glow::ONE_MINUS_SRC_ALPHA,
+                glow::ZERO,
+                glow::ONE,
+            );
+        } else {
+            gl.blend_func(glow::ONE, glow::ONE_MINUS_SRC_ALPHA);
+        }
+
         gl.blend_equation(glow::FUNC_ADD);
 
         gl.bind_texture(glow::TEXTURE_2D, Some(buffer.texture));
@@ -390,7 +420,7 @@ pub unsafe fn composite_root_buffer(
             glow::TEXTURE_MIN_FILTER,
             glow::NEAREST_MIPMAP_LINEAR as i32,
         );
-        
+
         gl.draw_arrays(glow::TRIANGLE_STRIP, 0, 4);
     }
 }

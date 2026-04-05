@@ -56,4 +56,24 @@ impl LayerParameter for FillLayerParameters {
     fn set_visible(&mut self, visible: bool) {
         self.visible = visible;
     }
+    fn is_lock(&self) -> bool {
+        false
+    }
+    fn set_lock(&mut self, _lock: bool) {} // No-op
+}
+
+impl FillLayerParameters {
+    pub fn alpha_clip(&self) -> bool {
+        self.alpha_clip
+    }
+    pub fn set_alpha_clip(&mut self, alpha_clip: bool) {
+        self.alpha_clip = alpha_clip;
+    }
+
+    pub fn alpha_lock(&self) -> bool {
+        self.alpha_lock
+    }
+    pub fn set_alpha_lock(&mut self, alpha_lock: bool) {
+        self.alpha_lock = alpha_lock;
+    }
 }

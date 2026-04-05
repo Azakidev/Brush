@@ -67,6 +67,8 @@ mod imp {
         pub alpha_clip_toggle: TemplateChild<gtk::ToggleButton>,
         #[template_child]
         pub alpha_lock_toggle: TemplateChild<gtk::ToggleButton>,
+        #[template_child]
+        pub passthrough_toggle: TemplateChild<gtk::ToggleButton>,
 
         // References
         pub layer: OnceCell<Uuid>,
@@ -138,9 +140,7 @@ impl BrushLayerItem {
             obj.toggle_selected(selection);
         }
 
-        obj.set_name(layer.name());
-        obj.set_opacity(layer.opacity());
-        obj.set_blend_mode(layer.blend_mode());
+        obj.update(selected_layer, layer);
         obj.setup_visibility(layer);
 
         if let Some(children) = layer.children() {
@@ -178,6 +178,7 @@ impl BrushLayerItem {
             Layer::Pixel(_inner) => {
                 // Pixel layers only show their filters (if any)
                 imp.children.set_visible(false);
+                imp.passthrough_toggle.set_visible(false);
                 imp.icon.set_icon_name(Some("folder-documents-symbolic"));
             }
             Layer::Group(_inner) => {
@@ -187,12 +188,14 @@ impl BrushLayerItem {
             Layer::Fill(_inner) => {
                 imp.children.set_visible(false);
                 imp.alpha_lock_toggle.set_visible(false);
+                imp.passthrough_toggle.set_visible(false);
                 imp.icon.set_icon_name(Some("fill-tool-symbolic"));
             }
             Layer::Filter(_inner) => {
                 imp.alpha_clip_toggle.set_visible(false);
                 imp.alpha_lock_toggle.set_visible(false);
                 imp.lock_toggle.set_visible(false);
+                imp.passthrough_toggle.set_visible(false);
                 // Filters have no children
                 imp.children_revealer.set_reveal_child(false);
             }
@@ -261,18 +264,53 @@ impl BrushLayerItem {
             imp.blend_mode.set_visible(false);
         } else {
             imp.blend_mode.set_visible(true);
-            imp.blend_mode.set_label(blend_mode.name());
+            imp.blend_mode.set_label(&blend_mode.to_string());
         }
     }
 
     pub fn update(&self, selected_layer: Option<Uuid>, layer: &Layer) {
+        // Selection
         if let Some(id) = selected_layer {
             self.toggle_selected(id);
         } else {
             self.imp().container.remove_css_class("layer_selected");
         }
+        // Info
         self.set_name(layer.name());
         self.set_opacity(layer.opacity());
-        self.set_blend_mode(layer.blend_mode());
+        self.set_blend_mode(&layer.blend_mode());
+        // Toggles
+        self.imp().visible_toggle.set_active(!layer.visible());
+        if layer.visible() {
+            self.imp()
+                .visible_toggle
+                .set_icon_name("eye-outline-filled-symbolic");
+        } else {
+            self.imp()
+                .visible_toggle
+                .set_icon_name("eye-not-looking-symbolic");
+        }
+        self.imp().lock_toggle.set_active(layer.lock());
+        if layer.lock() {
+            self.imp().lock_toggle.set_icon_name("padlock2-symbolic");
+        } else {
+            self.imp()
+                .lock_toggle
+                .set_icon_name("padlock2-open-symbolic");
+        }
+        self.imp().alpha_clip_toggle.set_active(layer.alpha_clip());
+        self.imp().alpha_lock_toggle.set_active(layer.alpha_lock());
+        self.imp()
+            .passthrough_toggle
+            .set_active(layer.passthrough());
+        if layer.passthrough() {
+            self.imp()
+                .passthrough_toggle
+                .set_icon_name("arrow-pointing-away-from-line-down-symbolic");
+        } else {
+            self.imp()
+                .passthrough_toggle
+                .set_icon_name("arrow-pointing-at-line-down-symbolic");
+        }
     }
 }

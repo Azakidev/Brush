@@ -5,7 +5,7 @@ precision highp int;
 in vec2 v_tex_coords;
 out vec4 color;
 
-uniform sampler2D u_texture;
+uniform sampler2D u_SrcTexture;
 uniform float u_opacity;
 uniform bool u_should_convert;
 
@@ -28,7 +28,7 @@ vec3 oklab_to_linear_rgb(vec3 c) {
 }
 
 void main() {
-    vec4 source_tex = texture(u_texture, v_tex_coords);
+    vec4 source_tex = texture(u_SrcTexture, v_tex_coords);
 
     if (u_should_convert == true) {
         vec3 linear_rgb = oklab_to_linear_rgb(source_tex.rgb);

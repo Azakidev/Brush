@@ -14,6 +14,9 @@ install_data(
 
 actions_dir = 'hicolor' / 'scalable' / 'actions'
 install_data(
+  actions_dir / 'edit-undo-symbolic.svg',
+  actions_dir / 'edit-redo-symbolic.svg',
+  actions_dir / 'eraser3-symbolic.svg',
   actions_dir / 'move-tool-symbolic.svg',
   actions_dir / 'fill-tool-symbolic.svg',
   actions_dir / 'paintbrush-symbolic.svg',
@@ -34,6 +37,12 @@ install_data(
   actions_dir / 'document-new-symbolic.svg',
   actions_dir / 'sliders-horizontal-symbolic.svg',
   actions_dir / 'eye-outline-filled-symbolic.svg',
+  actions_dir / 'eye-not-looking-symbolic.svg',
+  actions_dir / 'transparent-background-symbolic.svg',
+  actions_dir / 'opacity-symbolic.svg',
   actions_dir / 'padlock2-symbolic.svg',
+  actions_dir / 'padlock2-open-symbolic.svg',
+  actions_dir / 'arrow-pointing-away-from-line-down-symbolic.svg',
+  actions_dir / 'arrow-pointing-at-line-down-symbolic.svg',
   install_dir: get_option('datadir') / 'icons' / actions_dir,
 )

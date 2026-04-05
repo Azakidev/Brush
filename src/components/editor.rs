@@ -221,6 +221,52 @@ mod imp {
                 },
             );
 
+            klass.install_action(
+                "editor.set-layer-blend",
+                Some(VariantTy::UINT32),
+                |editor, _, arg| {
+                    if let Some(tab) = editor.current_page() {
+                        let _ = tab.activate_action("canvas.set-layer-blend", arg);
+                        editor.sync_project(&tab);
+                    }
+                },
+            );
+
+            klass.install_action("editor.toggle-visible", None, |editor, _, _| {
+                if let Some(tab) = editor.current_page() {
+                    let _ = tab.activate_action("canvas.toggle-visible", None);
+                    editor.sync_project(&tab);
+                }
+            });
+
+            klass.install_action("editor.toggle-alpha-clip", None, |editor, _, _| {
+                if let Some(tab) = editor.current_page() {
+                    let _ = tab.activate_action("canvas.toggle-alpha-clip", None);
+                    editor.sync_project(&tab);
+                }
+            });
+
+            klass.install_action("editor.toggle-alpha-lock", None, |editor, _, _| {
+                if let Some(tab) = editor.current_page() {
+                    let _ = tab.activate_action("canvas.toggle-alpha-lock", None);
+                    editor.sync_project(&tab);
+                }
+            });
+
+            klass.install_action("editor.toggle-passthrough", None, |editor, _, _| {
+                if let Some(tab) = editor.current_page() {
+                    let _ = tab.activate_action("canvas.toggle-passthrough", None);
+                    editor.sync_project(&tab);
+                }
+            });
+
+            klass.install_action("editor.toggle-lock", None, |editor, _, _| {
+                if let Some(tab) = editor.current_page() {
+                    let _ = tab.activate_action("canvas.toggle-lock", None);
+                    editor.sync_project(&tab);
+                }
+            });
+
             klass.install_action("editor.delete-layer", None, |editor, _, _| {
                 if let Some(tab) = editor.current_page() {
                     let _ = tab.activate_action("canvas.remove-layer", None);

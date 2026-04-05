@@ -35,6 +35,8 @@ use crate::data::{
 pub trait LayerParameter {
     fn is_visible(&self) -> bool;
     fn set_visible(&mut self, visible: bool);
+    fn is_lock(&self) -> bool;
+    fn set_lock(&mut self, lock: bool);
 }
 pub trait LayerData {}
 
@@ -90,12 +92,115 @@ impl Layer {
         }
     }
 
+    pub fn set_visible(&mut self, visible: bool) {
+        match self {
+            Layer::Pixel(inner) => inner.parameters.set_visible(visible),
+            Layer::Group(inner) => inner.parameters.set_visible(visible),
+            Layer::Fill(inner) => inner.parameters.set_visible(visible),
+            Layer::Filter(inner) => inner.parameters.set_visible(visible),
+        }
+    }
+
+    pub fn lock(&self) -> bool {
+        match self {
+            Layer::Pixel(inner) => inner.parameters.is_lock(),
+            Layer::Group(inner) => inner.parameters.is_lock(),
+            Layer::Fill(inner) => inner.parameters.is_lock(),
+            Layer::Filter(inner) => inner.parameters.is_lock(),
+        }
+    }
+
+    pub fn set_lock(&mut self, lock: bool) {
+        match self {
+            Layer::Pixel(inner) => inner.parameters.set_lock(lock),
+            Layer::Group(inner) => inner.parameters.set_lock(lock),
+            Layer::Fill(inner) => inner.parameters.set_lock(lock),
+            Layer::Filter(inner) => inner.parameters.set_lock(lock),
+        }
+    }
+
+    pub fn alpha_clip(&self) -> bool {
+        match self {
+            Layer::Pixel(inner) => inner.parameters.alpha_clip(),
+            Layer::Group(inner) => inner.parameters.alpha_clip(),
+            Layer::Fill(inner) => inner.parameters.alpha_clip(),
+            Layer::Filter(_) => false,
+        }
+    }
+
+    pub fn set_alpha_clip(&mut self, lock: bool) {
+        match self {
+            Layer::Pixel(inner) => inner.parameters.set_alpha_clip(lock),
+            Layer::Group(inner) => inner.parameters.set_alpha_clip(lock),
+            Layer::Fill(inner) => inner.parameters.set_alpha_clip(lock),
+            Layer::Filter(_) => {}
+        }
+    }
+
+    pub fn alpha_lock(&self) -> bool {
+        match self {
+            Layer::Pixel(inner) => inner.parameters.alpha_lock(),
+            Layer::Group(inner) => inner.parameters.alpha_lock(),
+            Layer::Fill(inner) => inner.parameters.alpha_lock(),
+            Layer::Filter(_) => false,
+        }
+    }
+
+    pub fn set_alpha_lock(&mut self, lock: bool) {
+        match self {
+            Layer::Pixel(inner) => inner.parameters.set_alpha_lock(lock),
+            Layer::Group(inner) => inner.parameters.set_alpha_lock(lock),
+            Layer::Fill(inner) => inner.parameters.set_alpha_lock(lock),
+            Layer::Filter(_) => {}
+        }
+    }
+
+    pub fn passthrough(&self) -> bool {
+        if let Layer::Group(inner) = self {
+            return inner.parameters.passthrough();
+        }
+        false
+    }
+
+    pub fn set_passthrough(&mut self, passthrough: bool) {
+        if let Layer::Group(inner) = self {
+            inner.parameters.set_passthrough(passthrough);
+        }
+    }
+
     pub fn opacity(&self) -> f32 {
         match self {
             Layer::Pixel(inner) => inner.parameters.opacity,
             Layer::Group(inner) => inner.parameters.opacity,
             Layer::Fill(inner) => inner.parameters.opacity,
             _ => 1f32,
+        }
+    }
+
+    pub fn set_opacity(&mut self, opacity: f32) {
+        match self {
+            Layer::Pixel(inner) => inner.parameters.opacity = opacity,
+            Layer::Group(inner) => inner.parameters.opacity = opacity,
+            Layer::Fill(inner) => inner.parameters.opacity = opacity,
+            _ => {}
+        }
+    }
+
+    pub fn blend_mode(&self) -> BlendMode {
+        match self {
+            Layer::Pixel(inner) => inner.parameters.blend_mode,
+            Layer::Group(inner) => inner.parameters.blend_mode,
+            Layer::Fill(inner) => inner.parameters.blend_mode,
+            _ => BlendMode::default(),
+        }
+    }
+    
+    pub fn set_blend_mode(&mut self, blend_mode: BlendMode) {
+        match self {
+            Layer::Pixel(inner) => inner.parameters.blend_mode = blend_mode,
+            Layer::Group(inner) => inner.parameters.blend_mode = blend_mode,
+            Layer::Fill(inner) => inner.parameters.blend_mode = blend_mode,
+            _ => {}
         }
     }
 
@@ -210,15 +315,6 @@ impl Layer {
         }
     }
 
-    pub fn blend_mode(&self) -> &BlendMode {
-        match self {
-            Layer::Pixel(inner) => &inner.parameters.blend_mode,
-            Layer::Group(inner) => &inner.parameters.blend_mode,
-            Layer::Fill(inner) => &inner.parameters.blend_mode,
-            _ => &BlendMode::Normal,
-        }
-    }
-
     pub fn name(&self) -> &str {
         match self {
             Layer::Pixel(inner) => &inner.name,
@@ -248,14 +344,6 @@ impl Layer {
     pub fn resize_group(&mut self) {
         if let Layer::Group(inner) = self {
             inner.data.calculate_group_bounds();
-        }
-    }
-
-    pub fn set_opacity(&mut self, opacity: f32) {
-        match self {
-            Layer::Pixel(inner) => inner.parameters.opacity = opacity,
-            Layer::Group(inner) => inner.parameters.opacity = opacity,
-            _ => {}
         }
     }
 
@@ -334,6 +422,7 @@ pub struct NodeLayerParameters {
     lock: bool,
     alpha_clip: bool,
     alpha_lock: bool,
+    passthrough: bool,
     pub blend_mode: BlendMode,
 }
 
@@ -346,6 +435,7 @@ impl Default for NodeLayerParameters {
             lock: false,
             alpha_clip: false,
             alpha_lock: false,
+            passthrough: false,
         }
     }
 }
@@ -356,6 +446,12 @@ impl LayerParameter for NodeLayerParameters {
     }
     fn set_visible(&mut self, visible: bool) {
         self.visible = visible;
+    }
+    fn is_lock(&self) -> bool {
+        self.lock
+    }
+    fn set_lock(&mut self, lock: bool) {
+        self.lock = lock;
     }
 }
 
@@ -368,6 +464,7 @@ impl NodeLayerParameters {
         lock: bool,
         alpha_clip: bool,
         alpha_lock: bool,
+        passthrough: bool,
     ) -> Self {
         Self {
             opacity: opacity.clamp(0f32, 1f32),
@@ -376,7 +473,27 @@ impl NodeLayerParameters {
             lock,
             alpha_clip,
             alpha_lock,
+            passthrough,
         }
+    }
+
+    fn alpha_clip(&self) -> bool {
+        self.alpha_clip
+    }
+    fn set_alpha_clip(&mut self, alpha_clip: bool) {
+        self.alpha_clip = alpha_clip;
+    }
+    fn alpha_lock(&self) -> bool {
+        self.alpha_lock
+    }
+    fn set_alpha_lock(&mut self, alpha_lock: bool) {
+        self.alpha_lock = alpha_lock;
+    }
+    fn passthrough(&self) -> bool {
+        self.passthrough
+    }
+    fn set_passthrough(&mut self, passthrough: bool) {
+        self.passthrough = passthrough;
     }
 }
 
@@ -393,5 +510,11 @@ impl LayerParameter for FilterLayerParameters {
     }
     fn set_visible(&mut self, visible: bool) {
         self.visible = visible;
+    }
+    fn is_lock(&self) -> bool {
+        self.lock
+    }
+    fn set_lock(&mut self, lock: bool) {
+        self.lock = lock;
     }
 }

@@ -87,7 +87,7 @@ fn hsv_to_srgb([h, s, v]: [f32; 3]) -> [f32; 3] {
 }
 
 fn srgb_to_hsv(src: [f32; 3]) -> [f32; 3] {
-    let rgb: OpaqueColor<Srgb> =  OpaqueColor::new(src);
+    let rgb: OpaqueColor<Srgb> = OpaqueColor::new(src);
     let hsl: OpaqueColor<Hsl> = rgb.convert();
 
     hsl_to_hsv(hsl.components)
@@ -117,7 +117,7 @@ fn hsl_to_hsv([h, s_l, l]: [f32; 3]) -> [f32; 3] {
 
     let s_v = if v == 0.0 { 0.0 } else { 2.0 * (1.0 - l / v) };
 
-    [h, s_v* 100f32, v * 100f32]
+    [h, s_v * 100f32, v * 100f32]
 }
 
 pub fn to_rgba(hsv: &OpaqueColor<Hsv>) -> gtk::gdk::RGBA {

@@ -19,17 +19,15 @@
  */
 
 use serde::{Deserialize, Serialize};
+use strum_macros::{Display, EnumIter, VariantNames};
 
-#[derive(Serialize, Deserialize, Debug, Default, Clone, Copy, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Default, Clone, Copy, Display, PartialEq, EnumIter, VariantNames)]
 pub enum BlendMode {
     #[default]
     Normal,
+    #[strum(to_string = "Hard Light")]
+    HardLight,
+    #[strum(to_string = "Soft Light")]
+    SoftLight,
 }
 
-impl BlendMode {
-    pub fn name(&self) -> &str {
-        match self {
-            Self::Normal => "Normal",
-        }
-    }
-}

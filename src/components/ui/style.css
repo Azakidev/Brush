@@ -43,7 +43,8 @@ colorChip {
 }
 
 .hue_slider trough {
-    background: linear-gradient(to right, /* Colors yaaaaaaaay */
+    background: linear-gradient(to right,
+            /* Colors yaaaaaaaay */
             hsl(0, 100%, 50%),
             hsl(15, 100%, 50%),
             hsl(30, 100%, 50%),
@@ -103,10 +104,9 @@ colorChip {
     font-size: 11px;
 }
 
-.compact button {
-    min-width: 0px;
-}
-
-.compact entry {
+button.compact,
+spinbutton.compact button,
+button.toggle.compact,
+entry.compact {
     min-width: 0px;
 }

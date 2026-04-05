@@ -22,6 +22,7 @@ template $BrushLayerItem: Box {
 
       ToggleButton revealer_toggle {
         active: true;
+        tooltip-text: _("Reveal chidren");
 
         styles [
           "flat",
@@ -84,22 +85,57 @@ template $BrushLayerItem: Box {
 
         ToggleButton visible_toggle {
           icon-name: "eye-outline-filled-symbolic";
-          action-name: "editor.toggle_visible";
-        }
+          action-name: "editor.toggle-visible";
+          tooltip-text: _("Visibility");
 
-        ToggleButton alpha_clip_toggle {
-          icon-name: "eye-outline-filled-symbolic";
-          action-name: "editor.toggle_alpha_clip";
-        }
-
-        ToggleButton alpha_lock_toggle {
-          icon-name: "eye-outline-filled-symbolic";
-          action-name: "editor.toggle_alpha_lock";
+          styles [
+            "flat",
+            "compact",
+          ]
         }
 
         ToggleButton lock_toggle {
-          icon-name: "padlock2-symbolic";
-          action-name: "editor.toggle_lock";
+          icon-name: "padlock2-open-symbolic";
+          action-name: "editor.toggle-lock";
+          tooltip-text: _("Lock editing");
+
+          styles [
+            "flat",
+            "compact",
+          ]
+        }
+
+        ToggleButton alpha_clip_toggle {
+          icon-name: "opacity-symbolic";
+          action-name: "editor.toggle-alpha-clip";
+          tooltip-text: _("Alpha clip");
+
+          styles [
+            "flat",
+            "compact",
+          ]
+        }
+
+        ToggleButton alpha_lock_toggle {
+          icon-name: "transparent-background-symbolic";
+          action-name: "editor.toggle-alpha-lock";
+          tooltip-text: _("Alpha lock");
+
+          styles [
+            "flat",
+            "compact",
+          ]
+        }
+
+        ToggleButton passthrough_toggle {
+          icon-name: "arrow-pointing-at-line-down-symbolic";
+          action-name: "editor.toggle-passthrough";
+          tooltip-text: _("Passthrough children");
+
+          styles [
+            "flat",
+            "compact",
+          ]
         }
       }
     }

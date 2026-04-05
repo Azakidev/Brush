@@ -27,6 +27,9 @@ use gtk::{
     glib::{self, clone},
 };
 use std::{cell::Cell, rc::Rc};
+use strum::VariantNames;
+
+use crate::data::blend_modes::BlendMode;
 
 mod imp {
 
@@ -40,6 +43,8 @@ mod imp {
         pub tree: TemplateChild<gtk::Box>,
         #[template_child]
         pub layer_opacity: TemplateChild<gtk::Scale>,
+        #[template_child]
+        pub blend_mode: TemplateChild<gtk::DropDown>,
 
         // Flags
         pub should_update: Rc<Cell<bool>>,
@@ -73,18 +78,11 @@ mod imp {
         fn constructed(&self) {
             self.parent_constructed();
 
-            self.layer_opacity.get().connect_value_changed(clone!(
-                #[weak(rename_to = obj)]
-                self,
-                move |s| {
-                    let val = s.value();
-                    let should_update = obj.obj().imp().should_update.get();
-                    if should_update {
-                        let _ =
-                            s.activate_action("editor.set-layer-opacity", Some(&val.to_variant()));
-                    }
-                }
-            ));
+            let obj = self.obj();
+
+            obj.prepare_dropdown();
+            obj.connect_opacity();
+            obj.connect_dropdown();
         }
     }
     impl WidgetImpl for BrushLayerTree {}
@@ -100,5 +98,34 @@ glib::wrapper! {
 impl BrushLayerTree {
     pub fn new() -> Self {
         glib::Object::new()
+    }
+
+    fn connect_opacity(&self) {
+        self.imp().layer_opacity.connect_value_changed(clone!(
+            #[weak(rename_to = obj)]
+            self,
+            move |s| {
+                let val = s.value();
+                let should_update = obj.imp().should_update.get();
+                if should_update {
+                    let _ = s.activate_action("editor.set-layer-opacity", Some(&val.to_variant()));
+                }
+            }
+        ));
+    }
+
+    fn prepare_dropdown(&self) {
+        let modes = BlendMode::VARIANTS;
+
+        let list = gtk::StringList::new(modes);
+
+        self.imp().blend_mode.set_model(Some(&list));
+    }
+
+    fn connect_dropdown(&self) {
+        self.imp().blend_mode.connect_selected_notify(move |d| {
+            let val = d.selected();
+            let _ = d.activate_action("editor.set-layer-blend", Some(&val.to_variant()));
+        });
     }
 }
