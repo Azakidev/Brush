@@ -194,7 +194,7 @@ impl Layer {
             _ => BlendMode::default(),
         }
     }
-    
+
     pub fn set_blend_mode(&mut self, blend_mode: BlendMode) {
         match self {
             Layer::Pixel(inner) => inner.parameters.blend_mode = blend_mode,

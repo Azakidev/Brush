@@ -23,15 +23,16 @@ use adw::{
     subclass::prelude::*,
 };
 use gtk::{
-    gdk, gio, glib::{
+    gdk, gio,
+    glib::{
         self, VariantTy, WeakRef, clone,
         object::{Cast, ObjectExt},
         property::PropertySet,
         types::StaticType,
         variant::ToVariant,
-    }, prelude::BoxExt
+    },
+    prelude::BoxExt,
 };
-use strum::IntoEnumIterator;
 use std::{
     cell::{Cell, RefCell},
     collections::HashMap,
@@ -39,6 +40,7 @@ use std::{
     rc::Rc,
     str::FromStr,
 };
+use strum::IntoEnumIterator;
 use uuid::Uuid;
 
 use crate::{

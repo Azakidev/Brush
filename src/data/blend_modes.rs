@@ -21,7 +21,9 @@
 use serde::{Deserialize, Serialize};
 use strum_macros::{Display, EnumIter, VariantNames};
 
-#[derive(Serialize, Deserialize, Debug, Default, Clone, Copy, Display, PartialEq, EnumIter, VariantNames)]
+#[derive(
+    Serialize, Deserialize, Debug, Default, Clone, Copy, Display, PartialEq, EnumIter, VariantNames,
+)]
 pub enum BlendMode {
     #[default]
     Normal,
@@ -30,4 +32,3 @@ pub enum BlendMode {
     #[strum(to_string = "Soft Light")]
     SoftLight,
 }
-
