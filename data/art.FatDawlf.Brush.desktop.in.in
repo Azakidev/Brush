@@ -1,11 +1,14 @@
 [Desktop Entry]
-Name=Brush
-Exec=brush
-Icon=art.FatDawlf.Brush
+Name=Brush@SUFFIX@
+Exec=@BIN_NAME@ %U
+Icon=@APP_ID@
+
 Terminal=false
 Type=Application
+
 Categories=Gtk;Graphics;2DGraphics;
-MimeType=application/x-brush;
+MimeType=@MIME_TYPES@
+
 StartupNotify=true
-StartupWMClass=brush
+StartupWMClass=@BIN_NAME@
 DBusActivatable=true

@@ -45,5 +45,7 @@ fn main() -> glib::ExitCode {
 
     let app = BrushApplication::new(config::APP_ID, &gio::ApplicationFlags::empty());
 
+    glib::set_application_name("Brush");
+
     app.run()
 }

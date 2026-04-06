@@ -33,8 +33,6 @@ gnome.compile_resources(
   dependencies: blueprints,
 )
 
-app_id = 'art.FatDawlf.Brush@0@'.format(get_option('app_id_suffix'))
-
 cargo_bin = find_program('cargo')
 cargo_opt = ['--manifest-path', meson.project_source_root() / 'Cargo.toml']
 cargo_opt += ['--target-dir', meson.project_build_root() / 'src']
