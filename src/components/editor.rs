@@ -57,6 +57,8 @@ use crate::{
 
 mod imp {
 
+    use gtk::prelude::ToggleButtonExt;
+
     use super::*;
 
     #[derive(Debug, Default, glib::Properties, gtk::CompositeTemplate)]
@@ -98,6 +100,8 @@ mod imp {
         pub brush_opacity_label: TemplateChild<gtk::SpinButton>,
         #[template_child]
         pub brush_size_label: TemplateChild<gtk::SpinButton>,
+        #[template_child]
+        pub eraser_toggle: TemplateChild<gtk::ToggleButton>,
 
         // State, stored in the editor content but needs to be referenced by UI
         pub editor_state: Rc<RefCell<BrushEditorState>>,
@@ -294,6 +298,13 @@ mod imp {
             });
 
             klass.install_property_action("editor.change-tool", "active_tool");
+
+            klass.install_action("editor.toggle_erase", None, |editor, _, _| {
+                let state = editor.imp().editor_state.borrow();
+                let mode = !*state.erase_mode.borrow();
+                state.set_erase_mode(mode);
+                editor.imp().eraser_toggle.set_active(mode);
+            });
         }
 
         fn instance_init(obj: &glib::subclass::InitializingObject<Self>) {

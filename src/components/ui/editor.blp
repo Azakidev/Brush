@@ -13,9 +13,7 @@ template $BrushEditor: Box {
       scope: managed;
     }
 
-    child: Box {
-      orientation: vertical;
-
+    child: Adw.Bin {
       Adw.ToolbarView toolbar_view {
         hexpand: true;
         reveal-top-bars: true;
@@ -24,7 +22,9 @@ template $BrushEditor: Box {
         Adw.HeaderBar header_bar {
           show-title: true;
 
-          title-widget: Adw.WindowTitle title {};
+          title-widget: Adw.WindowTitle title {
+            title: _("Brush"); // Placeholder
+          };
 
           [start]
           Box {
@@ -36,20 +36,33 @@ template $BrushEditor: Box {
               icon-name: "document-new-symbolic";
               action-name: "win.new-document";
               can-focus: false;
+
+              accessibility {
+                label: _("New document");
+              }
             }
 
             Button open_document {
               icon-name: "folder-open-symbolic";
               action-name: "win.open-document";
               can-focus: false;
+
+              accessibility {
+                label: _("Open document");
+              }
             }
 
             Button save_document {
               icon-name: "floppy-symbolic";
               action-name: "editor.save-document";
               can-focus: false;
+
+              accessibility {
+                label: _("Save document");
+              }
             }
           }
+
           [start]
           Box {
             styles [
@@ -60,19 +73,33 @@ template $BrushEditor: Box {
               icon-name: "edit-undo-symbolic";
               action-name: "editor.undo";
               can-focus: false;
+
+              accessibility {
+                label: _("Undo");
+              }
             }
 
             Button redo {
               icon-name: "edit-redo-symbolic";
               action-name: "editor.redo";
               can-focus: false;
+
+              accessibility {
+                label: _("Redo");
+              }
             }
           }
 
           [start]
           ToggleButton eraser_toggle {
             icon-name: "eraser3-symbolic";
+            action-name: "editor.toggle_erase";
             can-focus: false;
+            tooltip-text: _("Toggle erase");
+
+            accessibility {
+              label: _("Toggle erase mode");
+            }
           }
 
           [end]

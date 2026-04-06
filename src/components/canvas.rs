@@ -19,7 +19,6 @@
  */
 
 use adw::{prelude::*, subclass::prelude::*};
-use color::{AlphaColor, Oklab};
 use glow::{Context, NativeVertexArray};
 use gtk::{
     gdk,
@@ -86,6 +85,11 @@ mod imp {
         pub position: Cell<(f32, f32)>, // Offset from screen center
         pub rotation: Cell<f32>,        // Radians
         pub mouse_pos: Cell<(f32, f32)>,
+
+        // Stroke handling
+        pub stroke_mask: RefCell<Vec<u8>>,
+        pub last_position: Cell<(f32, f32)>,
+        pub last_pressure: Cell<f64>,
     }
 
     #[glib::object_subclass]
@@ -247,6 +251,8 @@ mod imp {
             self.parent_constructed();
 
             let obj = self.obj();
+
+            obj.clear_mask();
 
             obj.setup_accels_controller();
             obj.setup_motion_controller();
@@ -1011,7 +1017,7 @@ impl BrushCanvas {
             self,
             #[weak]
             start_pos,
-            move |_, _x, _y| {
+            move |gesture, _x, _y| {
                 let pos = obj.imp().position.get();
                 start_pos.set(pos);
 
@@ -1020,8 +1026,17 @@ impl BrushCanvas {
                     let tool = state.tool.borrow();
 
                     match *tool {
-                        BrushTool::Move => {}  // No op
-                        BrushTool::Brush => {} // TODO: Initial draw
+                        BrushTool::Move => {} // No op
+                        BrushTool::Brush => {
+                            obj.imp().last_position.replace(obj.imp().mouse_pos.get());
+                            if let Some(event) = gesture.last_event(None) {
+                                let pressure = event.axis(gdk::AxisUse::Pressure).unwrap_or(1.0);
+                                let _x_tilt = event.axis(gdk::AxisUse::Xtilt).unwrap_or(0.0);
+                                let _y_tilt = event.axis(gdk::AxisUse::Ytilt).unwrap_or(0.0);
+
+                                obj.imp().last_pressure.set(pressure);
+                            }
+                        }
                         _ => {}
                     }
                 }
@@ -1052,6 +1067,29 @@ impl BrushCanvas {
 
                                 obj.draw_stroke(pressure);
                             }
+                        }
+                        _ => {
+                            println!("Tool not implemented!")
+                        }
+                    }
+                }
+
+                obj.imp().canvas.queue_draw();
+            }
+        ));
+
+        drag.connect_drag_end(clone!(
+            #[weak(rename_to = obj)]
+            self,
+            move |_, _, _| {
+                if let Some(state) = obj.imp().editor_state.get() {
+                    let state = state.borrow();
+                    let tool = state.tool.borrow();
+
+                    match *tool {
+                        BrushTool::Move => {} // No-op
+                        BrushTool::Brush => {
+                            obj.clear_mask();
                         }
                         _ => {
                             println!("Tool not implemented!")
@@ -1237,32 +1275,98 @@ impl BrushCanvas {
         let mut project = self.imp().project.borrow_mut();
         let state = self.imp().editor_state.get().unwrap().borrow();
 
+        let mut mask = self.imp().stroke_mask.borrow_mut();
+
         // Brush parameters
         let base_size = state.brush_size.borrow();
         let base_opacity = state.brush_opacity.borrow();
+        let erase_mode = state.erase_mode.borrow();
 
         let color = state.primary_color.borrow().with_alpha(*base_opacity);
 
         // Brush coordinates
         let (px, py) = self.imp().mouse_pos.get();
-        let (cx, cy) = self.screen_to_canvas(&project, px as f64, py as f64);
+        let cp = self.screen_to_canvas(&project, px as f64, py as f64);
+        let (lx, ly) = self.imp().last_position.get();
+        let lp = self.screen_to_canvas(&project, lx as f64, ly as f64);
+
+        let l_pressure = self.imp().last_pressure.get();
+
+        self.imp().last_position.replace(self.imp().mouse_pos.get());
+        self.imp().last_pressure.set(pressure);
+
+        let interpolation_factor = 0.1 * l_pressure;
 
         if let Some(active_id) = self.imp().active_layer.get() {
             if project.is_layer_in_lock(active_id) {
-                // Don't draw if locked or invisible
+                // Don't draw if locked or hidden
                 return;
             }
 
+            // TODO: Brush engine
             if let Some(layer) = project.find_layer_mut(active_id) {
-                // TODO: Brush engine
-                let dynamic_size = (*base_size as f64 * pressure).clamp(1f64, 1000f64) as i32;
-
-                let color: AlphaColor<Oklab> = color.convert();
-
-                layer.draw_brush_dab(cx as i32, cy as i32, dynamic_size, color);
+                let points = interpolate_stroke(
+                    cp,
+                    lp,
+                    *base_size as f64,
+                    pressure,
+                    l_pressure,
+                    interpolation_factor,
+                );
+                for (x, y, p) in points {
+                    let dynamic_size = (*base_size as f64 * p).clamp(1f64, 1000f64);
+                    layer.draw_brush_dab(
+                        (x as i32, y as i32),
+                        dynamic_size as i32,
+                        color.convert(),
+                        *erase_mode,
+                        &mut mask,
+                    );
+                }
             }
         }
 
         self.imp().canvas.queue_render();
     }
+
+    fn clear_mask(&self) {
+        let project = self.imp().project.borrow();
+        let size = project.width * project.height;
+
+        let mask: Vec<u8> = vec![0; size as usize];
+        self.imp().stroke_mask.replace(mask);
+    }
+}
+
+fn interpolate_stroke(
+    new_pos: (f64, f64),
+    last_pos: (f64, f64),
+    brush_radius: f64,
+    new_pressure: f64,
+    last_pressure: f64,
+    spacing_ratio: f64, // e.g., 0.1 for 10% spacing
+) -> Vec<(f64, f64, f64)> {
+    let dx = new_pos.0 - last_pos.0;
+    let dy = new_pos.1 - last_pos.1;
+    let distance = (dx * dx + dy * dy).sqrt();
+
+    if distance < f64::EPSILON {
+        return vec![(new_pos.0, new_pos.1, new_pressure)];
+    }
+
+    let step_size = (brush_radius * 2f64) * spacing_ratio;
+    let mut points = Vec::new();
+
+    let mut traveled = 0f64;
+    while traveled < distance {
+        let t = traveled / distance;
+
+        let x = last_pos.0 + dx * t;
+        let y = last_pos.1 + dy * t;
+        let p = last_pressure + (new_pressure - last_pressure) * t;
+
+        points.push((x, y, p));
+        traveled += step_size;
+    }
+    points
 }

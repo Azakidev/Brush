@@ -347,11 +347,20 @@ impl Layer {
         }
     }
 
-    pub fn draw_brush_dab(&mut self, x: i32, y: i32, radius: i32, color: AlphaColor<Oklab>) {
+    pub fn draw_brush_dab(
+        &mut self,
+        (x, y): (i32, i32),
+        radius: i32,
+        color: AlphaColor<Oklab>,
+        erase_mode: bool,
+        mask: &mut [u8],
+    ) {
         // Convert global canvas coordinates to layer-local coordinates
         let local_x = x - self.x();
         let local_y = y - self.y();
         let (width, height) = (self.width() as i32, self.height() as i32);
+
+        let alpha_lock = self.alpha_lock();
 
         for dy in -radius..radius {
             for dx in -radius..radius {
@@ -362,14 +371,83 @@ impl Layer {
                     // Bounds check: only draw if inside this specific layer's dimensions
                     if px >= 0 && px < width && py >= 0 && py < height {
                         let idx = ((py * width + px) * 4) as usize;
-                        if let Some(data) = self.pixel_data_mut() {
-                            data[idx..idx + 4].copy_from_slice(&color.components);
+
+                        if should_edit_pixel(mask, px, py, width)
+                            && let Some(data) = self.pixel_data_mut()
+                        {
+                            let mut orig_color = [0f32; 4];
+                            orig_color.copy_from_slice(&data[idx..idx + 4]);
+                            let orig_color: AlphaColor<Oklab> = AlphaColor::new(orig_color);
+                            if erase_mode {
+                                let alpha =
+                                    (orig_color.components[3] - color.components[3]).max(0f32);
+                                let final_color = orig_color.with_alpha(alpha);
+
+                                data[idx..idx + 4].copy_from_slice(&final_color.components);
+                            } else {
+                                // TODO: Sample strength of brush from brush engine
+                                paint_pixel(
+                                    &mut data[idx..idx + 4],
+                                    color.components,
+                                    1f32,
+                                    alpha_lock,
+                                );
+                            }
                         }
                     }
                 }
             }
         }
         self.set_dirty(true);
+    }
+}
+
+fn paint_pixel(canvas_rgba: &mut [f32], brush_rgba: [f32; 4], strength: f32, alpha_lock: bool) {
+    let src_a = brush_rgba[3] * strength;
+    if src_a <= 0.0 {
+        return;
+    }
+
+    let src_r = brush_rgba[0] * src_a;
+    let src_g = brush_rgba[1] * src_a;
+    let src_b = brush_rgba[2] * src_a;
+
+    let dst_r = canvas_rgba[0];
+    let dst_g = canvas_rgba[1];
+    let dst_b = canvas_rgba[2];
+    let dst_a = canvas_rgba[3];
+
+    let dst_pre_r = dst_r * dst_a;
+    let dst_pre_g = dst_g * dst_a;
+    let dst_pre_b = dst_b * dst_a;
+
+    let out_a = if alpha_lock {
+        dst_a
+    } else {
+        src_a + dst_a * (1.0 - src_a)
+    };
+
+    let out_pre_r = src_r + dst_pre_r * (1.0 - src_a);
+    let out_pre_g = src_g + dst_pre_g * (1.0 - src_a);
+    let out_pre_b = src_b + dst_pre_b * (1.0 - src_a);
+
+    if out_a > f32::EPSILON {
+        canvas_rgba[0] = out_pre_r / out_a;
+        canvas_rgba[1] = out_pre_g / out_a;
+        canvas_rgba[2] = out_pre_b / out_a;
+        canvas_rgba[3] = out_a;
+    } else {
+        canvas_rgba.copy_from_slice(&[0.0, 0.0, 0.0, 0.0]);
+    }
+}
+
+fn should_edit_pixel(mask: &mut [u8], x: i32, y: i32, width: i32) -> bool {
+    let idx = y * width + x;
+    if mask[idx as usize] == 0 {
+        mask[idx as usize] = 1; // Mark as touched
+        true
+    } else {
+        false
     }
 }
 

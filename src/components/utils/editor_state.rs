@@ -29,6 +29,7 @@ use crate::components::utils::{color::Hsv, tools::BrushTool};
 #[allow(dead_code)]
 pub struct BrushEditorState {
     pub tool: RefCell<BrushTool>,
+    pub erase_mode: RefCell<bool>,
     // Colors
     pub primary_color: RefCell<OpaqueColor<Hsv>>,
     pub secondary_color: RefCell<OpaqueColor<Hsv>>,
@@ -41,12 +42,13 @@ impl Default for BrushEditorState {
     fn default() -> Self {
         BrushEditorState {
             tool: RefCell::new(BrushTool::Brush),
+            erase_mode: RefCell::new(false),
 
             primary_color: RefCell::new(OpaqueColor::BLACK),
             secondary_color: RefCell::new(OpaqueColor::WHITE),
 
             brush_opacity: RefCell::new(1f32),
-            brush_size: RefCell::new(64),
+            brush_size: RefCell::new(40),
         }
     }
 }
@@ -72,5 +74,9 @@ impl BrushEditorState {
 
     pub fn set_brush_size(&self, value: u32) {
         self.brush_size.replace(value);
+    }
+
+    pub fn set_erase_mode(&self, value: bool) {
+        self.erase_mode.replace(value);
     }
 }
