@@ -9,10 +9,6 @@ template $BrushEditor: Box {
     view: tab_view;
     enable-new-tab: false;
 
-    ShortcutController shortcut_controller {
-      scope: managed;
-    }
-
     child: Adw.Bin {
       Adw.ToolbarView toolbar_view {
         hexpand: true;
@@ -93,7 +89,7 @@ template $BrushEditor: Box {
           [start]
           ToggleButton eraser_toggle {
             icon-name: "eraser3-symbolic";
-            action-name: "editor.toggle_erase";
+            action-name: "editor.toggle-erase";
             can-focus: false;
             tooltip-text: _("Toggle erase");
 

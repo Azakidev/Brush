@@ -19,7 +19,7 @@
  */
 
 use adw::{
-    prelude::{GtkWindowExt, RangeExt, WidgetExt},
+    prelude::{GtkWindowExt, RangeExt, ToggleButtonExt, WidgetExt},
     subclass::prelude::*,
 };
 use gtk::{
@@ -29,14 +29,13 @@ use gtk::{
         object::{Cast, ObjectExt},
         property::PropertySet,
         types::StaticType,
-        variant::ToVariant,
     },
     prelude::BoxExt,
 };
 use std::{
     cell::{Cell, RefCell},
     collections::HashMap,
-    ops::Sub,
+    ops::{Deref, Sub},
     rc::Rc,
     str::FromStr,
 };
@@ -50,14 +49,14 @@ use crate::{
         color_selector::BrushColorSelector,
         layer_item::BrushLayerItem,
         layer_tree::BrushLayerTree,
-        utils::{color::to_rgba, editor_state::BrushEditorState},
+        utils::{color::to_rgba, editor_state::BrushEditorState, tools::BrushTool},
     },
-    data::{blend_modes::BlendMode, project::BrushProject},
+    data::{blend_modes::BrushBlendMode, project::BrushProject},
 };
 
 mod imp {
 
-    use gtk::prelude::ToggleButtonExt;
+    use gtk::{gio::prelude::ListModelExt, glib::object::CastNone};
 
     use super::*;
 
@@ -83,13 +82,11 @@ mod imp {
 
         // Editor widgets
         #[template_child]
-        pub shortcut_controller: TemplateChild<gtk::ShortcutController>,
+        pub primary_chip: TemplateChild<BrushColorChip>,
         #[template_child]
-        primary_chip: TemplateChild<BrushColorChip>,
+        pub secondary_chip: TemplateChild<BrushColorChip>,
         #[template_child]
-        secondary_chip: TemplateChild<BrushColorChip>,
-        #[template_child]
-        color_selector: TemplateChild<BrushColorSelector>,
+        pub color_selector: TemplateChild<BrushColorSelector>,
         #[template_child]
         pub layer_tree: TemplateChild<BrushLayerTree>,
         #[template_child]
@@ -103,7 +100,7 @@ mod imp {
         #[template_child]
         pub eraser_toggle: TemplateChild<gtk::ToggleButton>,
 
-        // State, stored in the editor content but needs to be referenced by UI
+        // State, stored in the canvas but needs to be referenced by editor
         pub editor_state: Rc<RefCell<BrushEditorState>>,
         pub current_project: Rc<RefCell<BrushProject>>,
         pub layer_widget_cache: RefCell<HashMap<Uuid, WeakRef<BrushLayerItem>>>,
@@ -138,173 +135,7 @@ mod imp {
         fn class_init(klass: &mut Self::Class) {
             klass.bind_template();
 
-            klass.install_action("editor.new-tab", None, |editor, _, _| {
-                editor.new_tab();
-                let _ = adw::prelude::WidgetExt::activate_action(
-                    editor,
-                    "win.should-open-editor",
-                    None,
-                );
-            });
-
-            klass.install_action("editor.close-tab", None, |editor, _, _| {
-                let tab_view = &editor.imp().tab_view;
-                let page = tab_view.selected_page();
-                if let Some(page) = page {
-                    tab_view.close_page(&page);
-                }
-            });
-
-            klass.install_action("editor.swap-colors", None, |editor, _, _| {
-                editor.imp().editor_state.borrow().swap_colors();
-                let state = editor.imp().editor_state.borrow();
-                let selector = &editor.imp().color_selector;
-
-                let primary_color = to_rgba(&state.primary_color.borrow());
-                let secondary_color = to_rgba(&state.secondary_color.borrow());
-
-                editor.emit_by_name::<()>("primary-changed", &[&primary_color]);
-                editor.emit_by_name::<()>("secondary-changed", &[&secondary_color]);
-                selector.set_color(&state.primary_color.borrow());
-            });
-
-            klass.install_action("editor.set-color", None, |editor, _, _| {
-                let state = editor.imp().editor_state.borrow();
-                let selector = &editor.imp().color_selector;
-                let color = selector.color();
-
-                state.primary_color.replace(color);
-
-                let rgb = to_rgba(&color);
-                editor.emit_by_name::<()>("primary-changed", &[&rgb]);
-            });
-
-            klass.install_action("editor.toggle-editor", None, |editor, _, _| {
-                editor.set_property("show_editor", !editor.show_editor());
-            });
-
-            klass.install_action("editor.toggle-toolbox", None, |editor, _, _| {
-                editor.set_property("show_toolbox", !editor.show_toolbox());
-            });
-
-            klass.install_action("editor.new-pixel", None, |editor, _, _| {
-                if let Some(tab) = editor.current_page() {
-                    let _ = tab.activate_action("canvas.new-pixel", None);
-                    editor.sync_project(&tab);
-                }
-            });
-
-            klass.install_action("editor.new-group", None, |editor, _, _| {
-                if let Some(tab) = editor.current_page() {
-                    let _ = tab.activate_action("canvas.new-group", None);
-                    editor.sync_project(&tab);
-                }
-            });
-
-            klass.install_action(
-                "editor.activate-layer",
-                Some(VariantTy::STRING),
-                |editor, _, arg| {
-                    if let Some(var) = arg {
-                        let value = var.to_string(); // 'UUID'
-                        let id = value.get(1..value.len().sub(1)).unwrap(); // Remove quotes
-                        if let Ok(id) = Uuid::from_str(id) {
-                            editor.activate_layer(id);
-                        }
-                    }
-                },
-            );
-
-            klass.install_action(
-                "editor.set-layer-opacity",
-                Some(VariantTy::DOUBLE),
-                |editor, _, arg| {
-                    if let Some(tab) = editor.current_page() {
-                        let _ = tab.activate_action("canvas.set-layer-opacity", arg);
-                        editor.sync_project(&tab);
-                    }
-                },
-            );
-
-            klass.install_action(
-                "editor.set-layer-blend",
-                Some(VariantTy::UINT32),
-                |editor, _, arg| {
-                    if let Some(tab) = editor.current_page() {
-                        let _ = tab.activate_action("canvas.set-layer-blend", arg);
-                        editor.sync_project(&tab);
-                    }
-                },
-            );
-
-            klass.install_action("editor.toggle-visible", None, |editor, _, _| {
-                if let Some(tab) = editor.current_page() {
-                    let _ = tab.activate_action("canvas.toggle-visible", None);
-                    editor.sync_project(&tab);
-                }
-            });
-
-            klass.install_action("editor.toggle-alpha-clip", None, |editor, _, _| {
-                if let Some(tab) = editor.current_page() {
-                    let _ = tab.activate_action("canvas.toggle-alpha-clip", None);
-                    editor.sync_project(&tab);
-                }
-            });
-
-            klass.install_action("editor.toggle-alpha-lock", None, |editor, _, _| {
-                if let Some(tab) = editor.current_page() {
-                    let _ = tab.activate_action("canvas.toggle-alpha-lock", None);
-                    editor.sync_project(&tab);
-                }
-            });
-
-            klass.install_action("editor.toggle-passthrough", None, |editor, _, _| {
-                if let Some(tab) = editor.current_page() {
-                    let _ = tab.activate_action("canvas.toggle-passthrough", None);
-                    editor.sync_project(&tab);
-                }
-            });
-
-            klass.install_action("editor.toggle-lock", None, |editor, _, _| {
-                if let Some(tab) = editor.current_page() {
-                    let _ = tab.activate_action("canvas.toggle-lock", None);
-                    editor.sync_project(&tab);
-                }
-            });
-
-            klass.install_action("editor.delete-layer", None, |editor, _, _| {
-                if let Some(tab) = editor.current_page() {
-                    let _ = tab.activate_action("canvas.remove-layer", None);
-                    editor.sync_project(&tab);
-                }
-            });
-
-            klass.install_action("editor.move-layer-up", None, |editor, _, _| {
-                if let Some(tab) = editor.current_page() {
-                    let _ = tab.activate_action("canvas.move-layer-up", None);
-                    editor.sync_project(&tab);
-                }
-            });
-
-            klass.install_action("editor.move-layer-down", None, |editor, _, _| {
-                if let Some(tab) = editor.current_page() {
-                    let _ = tab.activate_action("canvas.move-layer-down", None);
-                    editor.sync_project(&tab);
-                }
-            });
-
-            klass.install_action("editor.cancel", None, |editor, _, _| {
-                editor.release_focus();
-            });
-
-            klass.install_property_action("editor.change-tool", "active_tool");
-
-            klass.install_action("editor.toggle_erase", None, |editor, _, _| {
-                let state = editor.imp().editor_state.borrow();
-                let mode = !*state.erase_mode.borrow();
-                state.set_erase_mode(mode);
-                editor.imp().eraser_toggle.set_active(mode);
-            });
+            EditorAction::init_actions(klass);
         }
 
         fn instance_init(obj: &glib::subclass::InitializingObject<Self>) {
@@ -351,6 +182,18 @@ mod imp {
 
             let obj = self.obj();
 
+            // Make shortcut controller have a managed scope so accels work without focused
+            {
+                let list = obj.observe_controllers();
+
+                for i in 0..list.n_items() {
+                    if let Some(controller) = list.item(i).and_downcast::<gtk::ShortcutController>()
+                    {
+                        controller.set_scope(gtk::ShortcutScope::Managed);
+                    }
+                }
+            }
+
             let primary = self.primary_chip.get();
             let secondary = self.secondary_chip.get();
 
@@ -393,9 +236,6 @@ mod imp {
                     .sync_create()
                     .build();
             }
-
-            // Shortcuts
-            obj.setup_accels();
 
             // Initial UI sync
             {
@@ -546,7 +386,7 @@ impl BrushEditor {
         {
             let opacity = layer.opacity();
             let blend_mode = layer.blend_mode();
-            let blend_idx = BlendMode::iter().position(|b| b == blend_mode).unwrap();
+            let blend_idx = BrushBlendMode::iter().position(|b| b == blend_mode).unwrap();
 
             // Update
             layer_tree.should_update.set(false);
@@ -609,112 +449,6 @@ impl BrushEditor {
         None
     }
 
-    fn setup_accels(&self) {
-        let imp = self.imp();
-        imp.shortcut_controller.add_shortcut(gtk::Shortcut::new(
-            Some(gtk::KeyvalTrigger::new(
-                gdk::Key::N,
-                gdk::ModifierType::CONTROL_MASK,
-            )),
-            Some(gtk::NamedAction::new("editor.new-tab")),
-        ));
-
-        imp.shortcut_controller.add_shortcut(gtk::Shortcut::new(
-            Some(gtk::KeyvalTrigger::new(
-                gdk::Key::W,
-                gdk::ModifierType::CONTROL_MASK,
-            )),
-            Some(gtk::NamedAction::new("editor.close-tab")),
-        ));
-
-        imp.shortcut_controller.add_shortcut(gtk::Shortcut::new(
-            Some(gtk::KeyvalTrigger::new(
-                gdk::Key::X,
-                gdk::ModifierType::NO_MODIFIER_MASK,
-            )),
-            Some(gtk::NamedAction::new("editor.swap-colors")),
-        ));
-
-        imp.shortcut_controller.add_shortcut(gtk::Shortcut::new(
-            Some(gtk::KeyvalTrigger::new(
-                gdk::Key::comma,
-                gdk::ModifierType::NO_MODIFIER_MASK,
-            )),
-            Some(gtk::NamedAction::new("editor.toggle-editor")),
-        ));
-
-        imp.shortcut_controller.add_shortcut(gtk::Shortcut::new(
-            Some(gtk::KeyvalTrigger::new(
-                gdk::Key::period,
-                gdk::ModifierType::NO_MODIFIER_MASK,
-            )),
-            Some(gtk::NamedAction::new("editor.toggle-toolbox")),
-        ));
-
-        imp.shortcut_controller.add_shortcut(gtk::Shortcut::new(
-            Some(gtk::KeyvalTrigger::new(
-                gdk::Key::B,
-                gdk::ModifierType::NO_MODIFIER_MASK,
-            )),
-            Some(gtk::CallbackAction::new(|widget, _args| {
-                let _ = widget.activate_action("editor.change-tool", Some(&"brush".to_variant()));
-                glib::Propagation::Stop
-            })),
-        ));
-
-        imp.shortcut_controller.add_shortcut(gtk::Shortcut::new(
-            Some(gtk::KeyvalTrigger::new(
-                gdk::Key::A,
-                gdk::ModifierType::NO_MODIFIER_MASK,
-            )),
-            Some(gtk::CallbackAction::new(|widget, _args| {
-                let _ =
-                    widget.activate_action("editor.change-tool", Some(&"box_select".to_variant()));
-                glib::Propagation::Stop
-            })),
-        ));
-
-        imp.shortcut_controller.add_shortcut(gtk::Shortcut::new(
-            Some(gtk::KeyvalTrigger::new(
-                gdk::Key::Insert,
-                gdk::ModifierType::NO_MODIFIER_MASK,
-            )),
-            Some(gtk::NamedAction::new("editor.new-pixel")),
-        ));
-
-        imp.shortcut_controller.add_shortcut(gtk::Shortcut::new(
-            Some(gtk::KeyvalTrigger::new(
-                gdk::Key::Insert,
-                gdk::ModifierType::SHIFT_MASK,
-            )),
-            Some(gtk::NamedAction::new("editor.new-group")),
-        ));
-
-        imp.shortcut_controller.add_shortcut(gtk::Shortcut::new(
-            Some(gtk::KeyvalTrigger::new(
-                gdk::Key::Up,
-                gdk::ModifierType::ALT_MASK,
-            )),
-            Some(gtk::NamedAction::new("editor.move-layer-up")),
-        ));
-
-        imp.shortcut_controller.add_shortcut(gtk::Shortcut::new(
-            Some(gtk::KeyvalTrigger::new(
-                gdk::Key::Down,
-                gdk::ModifierType::ALT_MASK,
-            )),
-            Some(gtk::NamedAction::new("editor.move-layer-down")),
-        ));
-
-        imp.shortcut_controller.add_shortcut(gtk::Shortcut::new(
-            Some(gtk::KeyvalTrigger::new(
-                gdk::Key::Escape,
-                gdk::ModifierType::NO_MODIFIER_MASK,
-            )),
-            Some(gtk::NamedAction::new("editor.cancel")),
-        ));
-    }
-
     /**
         This function should be responsible for prompting to the user
         to make a new project, choosing the size and template if so.
@@ -762,5 +496,314 @@ impl BrushEditor {
         {
             window.set_focus(None::<&gtk::Widget>);
         };
+    }
+}
+
+#[derive(strum::Display, strum::EnumIter, strum::AsRefStr)]
+enum EditorAction {
+    // Document management
+    #[strum(to_string = "editor.new-tab")]
+    NewTab,
+    #[strum(to_string = "editor.close-tab")]
+    CloseTab,
+    // Editor state changes
+    #[strum(to_string = "editor.cancel")]
+    Cancel,
+    #[strum(to_string = "editor.swap-colors")]
+    SwapColors,
+    #[strum(to_string = "editor.set-color")]
+    SetColor,
+    #[strum(to_string = "editor.toggle-editor")]
+    ToggleEditor,
+    #[strum(to_string = "editor.toggle-toolbox")]
+    ToggleToolbox,
+    #[strum(to_string = "editor.change-tool")]
+    SetTool,
+    #[strum(to_string = "editor.toggle-erase")]
+    ToggleErase,
+    // Layer handling
+    #[strum(to_string = "editor.new-pixel")]
+    NewPixel,
+    #[strum(to_string = "editor.new-group")]
+    NewGroup,
+    #[strum(to_string = "editor.activate-layer")]
+    ActivateLayer,
+    #[strum(to_string = "editor.delete-layer")]
+    DeleteLayer,
+    #[strum(to_string = "editor.move-layer-up")]
+    MoveLayerUp,
+    #[strum(to_string = "editor.move-layer-down")]
+    MoveLayerDown,
+    // Layer modifications
+    #[strum(to_string = "editor.set-layer-opacity")]
+    SetLayerOpacity,
+    #[strum(to_string = "editor.set-layer-blend")]
+    SetLayerBlendMode,
+    #[strum(to_string = "editor.toggle-lock")]
+    ToggleLock,
+    #[strum(to_string = "editor.toggle-visible")]
+    ToggleVisible,
+    #[strum(to_string = "editor.toggle-alpha-clip")]
+    ToggleAlphaClip,
+    #[strum(to_string = "editor.toggle-alpha-lock")]
+    ToggleAlphaLock,
+    #[strum(to_string = "editor.toggle-passthrough")]
+    TogglePassthrough,
+}
+
+impl Deref for EditorAction {
+    type Target = str;
+    fn deref(&self) -> &Self::Target {
+        self.as_ref()
+    }
+}
+
+impl EditorAction {
+    fn init_actions(klass: &mut <imp::BrushEditor as ObjectSubclass>::Class) {
+        for action in Self::iter() {
+            match action {
+                // Document management
+                Self::NewTab => {
+                    klass.install_action(&action, None, |e, _, _| {
+                        e.new_tab();
+                        let _ = adw::prelude::WidgetExt::activate_action(
+                            e,
+                            "win.should-open-editor",
+                            None,
+                        );
+                    });
+                }
+                Self::CloseTab => {
+                    klass.install_action(&action, None, |e, _, _| {
+                        let tab_view = &e.imp().tab_view;
+                        let page = tab_view.selected_page();
+                        if let Some(page) = page {
+                            tab_view.close_page(&page);
+                        }
+                    });
+
+                    klass.add_binding_action(gdk::Key::W, gdk::ModifierType::CONTROL_MASK, &action);
+                }
+                // Editor state changes
+                Self::ToggleEditor => {
+                    klass.install_action(&action, None, |e, _, _| {
+                        e.set_property("show_editor", !e.show_editor());
+                    });
+
+                    klass.add_binding_action(
+                        gdk::Key::comma,
+                        gdk::ModifierType::NO_MODIFIER_MASK,
+                        &action,
+                    );
+                }
+                Self::ToggleToolbox => {
+                    klass.install_action(&action, None, |e, _, _| {
+                        e.set_property("show_toolbox", !e.show_toolbox());
+                    });
+
+                    klass.add_binding_action(
+                        gdk::Key::period,
+                        gdk::ModifierType::NO_MODIFIER_MASK,
+                        &action,
+                    );
+                }
+                Self::Cancel => {
+                    klass.install_action(&action, None, |e, _, _| {
+                        e.release_focus();
+                    });
+
+                    klass.add_binding_action(
+                        gdk::Key::Escape,
+                        gdk::ModifierType::NO_MODIFIER_MASK,
+                        &action,
+                    );
+                }
+                Self::SwapColors => {
+                    klass.install_action(&action, None, |e, _, _| {
+                        e.imp().editor_state.borrow().swap_colors();
+                        let state = e.imp().editor_state.borrow();
+                        let selector = &e.imp().color_selector;
+
+                        let primary_color = to_rgba(&state.primary_color.borrow());
+                        let secondary_color = to_rgba(&state.secondary_color.borrow());
+
+                        e.emit_by_name::<()>("primary-changed", &[&primary_color]);
+                        e.emit_by_name::<()>("secondary-changed", &[&secondary_color]);
+                        selector.set_color(&state.primary_color.borrow());
+                    });
+
+                    klass.add_binding_action(
+                        gdk::Key::X,
+                        gdk::ModifierType::NO_MODIFIER_MASK,
+                        &action,
+                    );
+                }
+                Self::SetColor => {
+                    klass.install_action(&action, None, |e, _, _| {
+                        let state = e.imp().editor_state.borrow();
+                        let selector = &e.imp().color_selector;
+                        let color = selector.color();
+
+                        state.primary_color.replace(color);
+
+                        let rgb = to_rgba(&color);
+                        e.emit_by_name::<()>("primary-changed", &[&rgb]);
+                    });
+                }
+                Self::SetTool => {
+                    klass.install_property_action(&action, "active_tool");
+
+                    // TODO: Binds for the rest of the tools
+                    klass.add_binding(gdk::Key::A, gdk::ModifierType::NO_MODIFIER_MASK, |e| {
+                        e.set_active_tool(BrushTool::SelectBox.as_ref());
+                        glib::Propagation::Stop
+                    });
+
+                    klass.add_binding(gdk::Key::B, gdk::ModifierType::NO_MODIFIER_MASK, |e| {
+                        e.set_active_tool(BrushTool::Brush.as_ref());
+                        glib::Propagation::Stop
+                    });
+                }
+                Self::ToggleErase => {
+                    klass.install_action(&action, None, |e, _, _| {
+                        let state = e.imp().editor_state.borrow();
+                        let mode = !*state.erase_mode.borrow();
+                        state.set_erase_mode(mode);
+                        e.imp().eraser_toggle.set_active(mode);
+                    });
+
+                    klass.add_binding_action(
+                        gdk::Key::E,
+                        gdk::ModifierType::NO_MODIFIER_MASK,
+                        &action,
+                    );
+                }
+                // Layer handling
+                Self::NewPixel => {
+                    klass.install_action(&action, None, |e, _, _| {
+                        if let Some(tab) = e.current_page() {
+                            let _ = tab.activate_action("canvas.new-pixel", None);
+                            e.sync_project(&tab);
+                        }
+                    });
+
+                    klass.add_binding_action(
+                        gdk::Key::Insert,
+                        gdk::ModifierType::NO_MODIFIER_MASK,
+                        &action,
+                    );
+                }
+                Self::NewGroup => {
+                    klass.install_action(&action, None, |e, _, _| {
+                        if let Some(tab) = e.current_page() {
+                            let _ = tab.activate_action("canvas.new-group", None);
+                            e.sync_project(&tab);
+                        }
+                    });
+
+                    klass.add_binding_action(
+                        gdk::Key::Insert,
+                        gdk::ModifierType::SHIFT_MASK,
+                        &action,
+                    );
+                }
+                Self::ActivateLayer => {
+                    klass.install_action(&action, Some(VariantTy::STRING), |e, _, arg| {
+                        if let Some(var) = arg {
+                            let value = var.to_string(); // 'UUID'
+                            let id = value.get(1..value.len().sub(1)).unwrap(); // Remove quotes
+                            if let Ok(id) = Uuid::from_str(id) {
+                                e.activate_layer(id);
+                            }
+                        }
+                    });
+                }
+                Self::DeleteLayer => {
+                    klass.install_action(&action, None, |e, _, _| {
+                        if let Some(tab) = e.current_page() {
+                            let _ = tab.activate_action("canvas.delete-layer", None);
+                            e.sync_project(&tab);
+                        }
+                    });
+                }
+                Self::MoveLayerUp => {
+                    klass.install_action(&action, None, |e, _, _| {
+                        if let Some(tab) = e.current_page() {
+                            let _ = tab.activate_action("canvas.move-layer-up", None);
+                            e.sync_project(&tab);
+                        }
+                    });
+
+                    klass.add_binding_action(gdk::Key::Up, gdk::ModifierType::ALT_MASK, &action);
+                }
+                Self::MoveLayerDown => {
+                    klass.install_action(&action, None, |e, _, _| {
+                        if let Some(tab) = e.current_page() {
+                            let _ = tab.activate_action("canvas.move-layer-down", None);
+                            e.sync_project(&tab);
+                        }
+                    });
+
+                    klass.add_binding_action(gdk::Key::Down, gdk::ModifierType::ALT_MASK, &action);
+                }
+                // Layer modifications
+                Self::SetLayerOpacity => {
+                    klass.install_action(&action, Some(VariantTy::DOUBLE), |e, _, arg| {
+                        if let Some(tab) = e.current_page() {
+                            let _ = tab.activate_action("canvas.set-layer-opacity", arg);
+                            e.sync_project(&tab);
+                        }
+                    });
+                }
+                Self::SetLayerBlendMode => {
+                    klass.install_action(&action, Some(VariantTy::UINT32), |e, _, arg| {
+                        if let Some(tab) = e.current_page() {
+                            let _ = tab.activate_action("canvas.set-layer-blend", arg);
+                            e.sync_project(&tab);
+                        }
+                    });
+                }
+                Self::ToggleVisible => {
+                    klass.install_action(&action, None, |e, _, _| {
+                        if let Some(tab) = e.current_page() {
+                            let _ = tab.activate_action("canvas.toggle-visible", None);
+                            e.sync_project(&tab);
+                        }
+                    });
+                }
+                Self::ToggleAlphaClip => {
+                    klass.install_action(&action, None, |e, _, _| {
+                        if let Some(tab) = e.current_page() {
+                            let _ = tab.activate_action("canvas.toggle-alpha-clip", None);
+                            e.sync_project(&tab);
+                        }
+                    });
+                }
+                Self::ToggleAlphaLock => {
+                    klass.install_action(&action, None, |e, _, _| {
+                        if let Some(tab) = e.current_page() {
+                            let _ = tab.activate_action("canvas.toggle-alpha-lock", None);
+                            e.sync_project(&tab);
+                        }
+                    });
+                }
+                Self::TogglePassthrough => {
+                    klass.install_action(&action, None, |e, _, _| {
+                        if let Some(tab) = e.current_page() {
+                            let _ = tab.activate_action("canvas.toggle-passthrough", None);
+                            e.sync_project(&tab);
+                        }
+                    });
+                }
+                Self::ToggleLock => {
+                    klass.install_action(&action, None, |e, _, _| {
+                        if let Some(tab) = e.current_page() {
+                            let _ = tab.activate_action("canvas.toggle-lock", None);
+                            e.sync_project(&tab);
+                        }
+                    });
+                }
+            }
+        }
     }
 }

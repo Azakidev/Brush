@@ -21,7 +21,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::data::{
-    blend_modes::BlendMode,
+    blend_modes::BrushBlendMode,
     layer::{LayerData, LayerParameter},
 };
 
@@ -46,7 +46,7 @@ pub struct FillLayerParameters {
     pub visible: bool,
     pub alpha_clip: bool,
     pub alpha_lock: bool,
-    pub blend_mode: BlendMode,
+    pub blend_mode: BrushBlendMode,
 }
 
 impl LayerParameter for FillLayerParameters {

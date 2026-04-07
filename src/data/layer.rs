@@ -23,7 +23,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::data::{
-    blend_modes::BlendMode,
+    blend_modes::BrushBlendMode,
     layer_types::{
         fill::{FillLayerData, FillLayerParameters},
         filter::FilterData,
@@ -186,16 +186,16 @@ impl Layer {
         }
     }
 
-    pub fn blend_mode(&self) -> BlendMode {
+    pub fn blend_mode(&self) -> BrushBlendMode {
         match self {
             Layer::Pixel(inner) => inner.parameters.blend_mode,
             Layer::Group(inner) => inner.parameters.blend_mode,
             Layer::Fill(inner) => inner.parameters.blend_mode,
-            _ => BlendMode::default(),
+            _ => BrushBlendMode::default(),
         }
     }
 
-    pub fn set_blend_mode(&mut self, blend_mode: BlendMode) {
+    pub fn set_blend_mode(&mut self, blend_mode: BrushBlendMode) {
         match self {
             Layer::Pixel(inner) => inner.parameters.blend_mode = blend_mode,
             Layer::Group(inner) => inner.parameters.blend_mode = blend_mode,
@@ -501,7 +501,7 @@ pub struct NodeLayerParameters {
     alpha_clip: bool,
     alpha_lock: bool,
     passthrough: bool,
-    pub blend_mode: BlendMode,
+    pub blend_mode: BrushBlendMode,
 }
 
 impl Default for NodeLayerParameters {
@@ -509,7 +509,7 @@ impl Default for NodeLayerParameters {
         Self {
             opacity: 1f32,
             visible: true,
-            blend_mode: BlendMode::default(),
+            blend_mode: BrushBlendMode::default(),
             lock: false,
             alpha_clip: false,
             alpha_lock: false,
@@ -537,7 +537,7 @@ impl LayerParameter for NodeLayerParameters {
 impl NodeLayerParameters {
     fn new(
         opacity: f32,
-        blend_mode: BlendMode,
+        blend_mode: BrushBlendMode,
         visible: bool,
         lock: bool,
         alpha_clip: bool,

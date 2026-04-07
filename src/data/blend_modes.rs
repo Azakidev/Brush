@@ -18,17 +18,35 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
+use std::ops::Deref;
+
 use serde::{Deserialize, Serialize};
-use strum_macros::{Display, EnumIter, VariantNames};
 
 #[derive(
-    Serialize, Deserialize, Debug, Default, Clone, Copy, Display, PartialEq, EnumIter, VariantNames,
+    Serialize,
+    Deserialize,
+    Debug,
+    Default,
+    Clone,
+    Copy,
+    PartialEq,
+    strum::Display,
+    strum::EnumIter,
+    strum::VariantNames,
+    strum::AsRefStr,
 )]
-pub enum BlendMode {
+pub enum BrushBlendMode {
     #[default]
     Normal,
     #[strum(to_string = "Hard Light")]
     HardLight,
     #[strum(to_string = "Soft Light")]
     SoftLight,
+}
+
+impl Deref for BrushBlendMode {
+    type Target = str;
+    fn deref(&self) -> &Self::Target {
+        self.as_ref()
+    }
 }

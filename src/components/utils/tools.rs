@@ -18,9 +18,18 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-use strum_macros::{Display, EnumIter, VariantNames};
+use std::ops::Deref;
 
-#[derive(Debug, PartialEq, Clone, Copy, Display, VariantNames, EnumIter)]
+#[derive(
+    Debug,
+    PartialEq,
+    Clone,
+    Copy,
+    strum::Display,
+    strum::AsRefStr,
+    strum::VariantNames,
+    strum::EnumIter,
+)]
 pub enum BrushTool {
     #[strum(to_string = "move")]
     Move,
@@ -38,4 +47,11 @@ pub enum BrushTool {
     SelectLasso,
     #[strum(to_string = "wand_select")]
     SelectWand,
+}
+
+impl Deref for BrushTool {
+    type Target = str;
+    fn deref(&self) -> &Self::Target {
+        self.as_ref()
+    }
 }

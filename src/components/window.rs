@@ -18,11 +18,14 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
+use std::ops::Deref;
+
 use crate::components::editor::BrushEditor;
 use crate::components::welcome::BrushWelcome;
 use adw::prelude::*;
 use adw::subclass::prelude::*;
-use gtk::{gio, glib};
+use gtk::{gdk, gio, glib};
+use strum::IntoEnumIterator;
 
 mod imp {
     use crate::config;
@@ -54,20 +57,7 @@ mod imp {
         fn class_init(klass: &mut Self::Class) {
             klass.bind_template();
 
-            klass.install_action("win.new-document", None, |win, _, _| {
-                let tab_view = &win.imp().editor.imp().tab_view;
-                let _ = tab_view.activate_action("editor.new-tab", None);
-            });
-
-            klass.install_action("win.should-open-editor", None, |win, _, _| {
-                let tab_view = &win.imp().editor.imp().tab_view;
-                win.should_open_editor(tab_view.n_pages());
-            });
-
-            klass.install_action("win.should-close-editor", None, |win, _, _| {
-                let tab_view = &win.imp().editor.imp().tab_view;
-                win.should_close_editor(tab_view.n_pages());
-            });
+            WindowActions::init_actions(klass);
         }
 
         fn instance_init(obj: &glib::subclass::InitializingObject<Self>) {
@@ -125,6 +115,52 @@ impl BrushWindow {
             editor.obj().set_property("show_toolbox", true.to_value());
             stack.set_visible_child_name("editor");
             editor.obj().release_focus();
+        }
+    }
+}
+
+#[derive(strum::Display, strum::AsRefStr, strum::EnumIter)]
+enum WindowActions {
+    #[strum(to_string = "win.new-document")]
+    NewDocument,
+    #[strum(to_string = "win.should-open-editor")]
+    OpenEditor,
+    #[strum(to_string = "win.should-close-editor")]
+    CloseEditor,
+}
+
+impl Deref for WindowActions {
+    type Target = str;
+    fn deref(&self) -> &Self::Target {
+        self.as_ref()
+    }
+}
+
+impl WindowActions {
+    fn init_actions(klass: &mut <imp::BrushWindow as ObjectSubclass>::Class) {
+        for action in Self::iter() {
+            match action {
+                Self::NewDocument => {
+                    klass.install_action(&action, None, |win, _, _| {
+                        let tab_view = &win.imp().editor.imp().tab_view;
+                        let _ = tab_view.activate_action("editor.new-tab", None);
+                    });
+
+                    klass.add_binding_action(gdk::Key::N, gdk::ModifierType::CONTROL_MASK, &action);
+                }
+                Self::OpenEditor => {
+                    klass.install_action(&action, None, |win, _, _| {
+                        let tab_view = &win.imp().editor.imp().tab_view;
+                        win.should_open_editor(tab_view.n_pages());
+                    });
+                }
+                Self::CloseEditor => {
+                    klass.install_action(&action, None, |win, _, _| {
+                        let tab_view = &win.imp().editor.imp().tab_view;
+                        win.should_close_editor(tab_view.n_pages());
+                    });
+                }
+            }
         }
     }
 }

@@ -27,7 +27,7 @@ use gtk::{
 use std::{cell::OnceCell, collections::HashMap, ops::Mul};
 use uuid::Uuid;
 
-use crate::data::{blend_modes::BlendMode, layer::Layer};
+use crate::data::{blend_modes::BrushBlendMode, layer::Layer};
 
 mod imp {
 
@@ -257,14 +257,14 @@ impl BrushLayerItem {
         }
     }
 
-    fn set_blend_mode(&self, blend_mode: &BlendMode) {
+    fn set_blend_mode(&self, blend_mode: &BrushBlendMode) {
         let imp = self.imp();
 
-        if blend_mode == &BlendMode::Normal {
+        if blend_mode == &BrushBlendMode::Normal {
             imp.blend_mode.set_visible(false);
         } else {
             imp.blend_mode.set_visible(true);
-            imp.blend_mode.set_label(&blend_mode.to_string());
+            imp.blend_mode.set_label(blend_mode.as_ref());
         }
     }
 

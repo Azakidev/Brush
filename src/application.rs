@@ -99,7 +99,6 @@ impl BrushApplication {
         self.add_action_entries(actions);
 
         self.set_accels_for_action("app.quit", &["<Ctrl>q"]);
-        self.set_accels_for_action("win.new-document", &["<Ctrl>n"]);
     }
 
     fn setup_icons(&self) {

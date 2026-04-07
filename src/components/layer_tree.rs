@@ -18,6 +18,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
+use crate::data::blend_modes::BrushBlendMode;
 use adw::{
     prelude::{RangeExt, ToVariant, WidgetExt},
     subclass::prelude::*,
@@ -26,10 +27,8 @@ use gtk::{
     TemplateChild,
     glib::{self, clone},
 };
-use std::{cell::Cell, rc::Rc};
 use strum::VariantNames;
-
-use crate::data::blend_modes::BlendMode;
+use std::{cell::Cell, rc::Rc};
 
 mod imp {
 
@@ -115,7 +114,7 @@ impl BrushLayerTree {
     }
 
     fn prepare_dropdown(&self) {
-        let modes = BlendMode::VARIANTS;
+        let modes = BrushBlendMode::VARIANTS;
 
         let list = gtk::StringList::new(modes);
 

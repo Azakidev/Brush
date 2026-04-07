@@ -30,7 +30,7 @@ use std::{
     cell::{Cell, OnceCell, RefCell},
     collections::HashMap,
     f32::consts::PI,
-    ops::Sub,
+    ops::{Deref, Sub},
     rc::Rc,
 };
 use uuid::Uuid;
@@ -48,15 +48,11 @@ use crate::{
             tools::BrushTool,
         },
     },
-    data::{blend_modes::BlendMode, layer::Layer, project::BrushProject},
+    data::{blend_modes::BrushBlendMode, layer::Layer, project::BrushProject},
 };
+use strum::IntoEnumIterator;
 
 mod imp {
-
-    use gtk::glib::WeakRef;
-    use strum::IntoEnumIterator;
-
-    use crate::data::blend_modes::BlendMode;
 
     use super::*;
 
@@ -111,127 +107,7 @@ mod imp {
         fn class_init(klass: &mut Self::Class) {
             klass.bind_template();
 
-            klass.install_action("canvas.zoom-in", None, |canvas, _, _| {
-                canvas.zoom_by(0.05f32);
-            });
-
-            klass.install_action("canvas.new-pixel", None, |canvas, _, _| {
-                let layer = canvas.new_pixel_layer();
-                canvas.push_layer(layer);
-            });
-
-            klass.install_action("canvas.new-group", None, |canvas, _, _| {
-                let layer = canvas.new_group_layer();
-                canvas.push_layer(layer);
-            });
-
-            klass.install_action("canvas.remove-layer", None, |canvas, _, _| {
-                canvas.remove_layer();
-            });
-
-            klass.install_action("canvas.move-layer-up", None, |canvas, _, _| {
-                canvas.move_layer_up();
-            });
-
-            klass.install_action("canvas.move-layer-down", None, |canvas, _, _| {
-                canvas.move_layer_down();
-            });
-
-            klass.install_action(
-                "canvas.rename-layer",
-                Some(VariantTy::STRING),
-                move |canvas, _, arg| {
-                    if let Some(var) = arg {
-                        let value = var.to_string(); // 'Name'
-                        let name = value.get(1..value.len().sub(1)).unwrap(); // Remove quotes
-                        if let Some(active_layer) = canvas.imp().active_layer.get() {
-                            canvas.rename_layer(active_layer, name.to_string());
-                        }
-                    }
-                },
-            );
-
-            klass.install_action(
-                "canvas.set-layer-opacity",
-                Some(VariantTy::DOUBLE),
-                |canvas, _, arg| {
-                    if let Some(var) = arg
-                        && let Some(val) = var.get::<f64>()
-                    {
-                        canvas.set_layer_opacity(val as f32);
-                    }
-                },
-            );
-
-            klass.install_action(
-                "canvas.set-layer-blend",
-                Some(VariantTy::UINT32),
-                |canvas, _, arg| {
-                    if let Some(var) = arg
-                        && let Some(val) = var.get::<u32>()
-                        && let Some(blend_mode) =
-                            BlendMode::iter().take(val as usize + 1).next_back()
-                    {
-                        canvas.set_layer_blend(blend_mode);
-                    }
-                },
-            );
-
-            klass.install_action("canvas.toggle-visible", None, |canvas, _, _| {
-                canvas.toggle_visible();
-            });
-
-            klass.install_action("canvas.toggle-alpha-clip", None, |canvas, _, _| {
-                canvas.toggle_alpha_clip();
-            });
-
-            klass.install_action("canvas.toggle-alpha-lock", None, |canvas, _, _| {
-                canvas.toggle_alpha_lock();
-            });
-
-            klass.install_action("canvas.toggle-passthrough", None, |canvas, _, _| {
-                canvas.toggle_passthrough();
-            });
-
-            klass.install_action("canvas.toggle-lock", None, |canvas, _, _| {
-                canvas.toggle_lock();
-            });
-
-            klass.install_action("canvas.zoom-out", None, move |canvas, _, _| {
-                canvas.zoom_by(-0.05f32);
-            });
-
-            klass.install_action("canvas.zoom-to-fit", None, move |canvas, _, _| {
-                canvas.zoom_to_fit();
-            });
-
-            klass.install_action("canvas.pan-up", None, move |canvas, _, _| {
-                canvas.move_by(0f32, 60f32);
-            });
-
-            klass.install_action("canvas.pan-down", None, move |canvas, _, _| {
-                canvas.move_by(0f32, -60f32);
-            });
-
-            klass.install_action("canvas.pan-right", None, move |canvas, _, _| {
-                canvas.move_by(-60f32, 0f32);
-            });
-
-            klass.install_action("canvas.pan-left", None, move |canvas, _, _| {
-                canvas.move_by(60f32, 0f32);
-            });
-
-            klass.install_action("canvas.rotate-right", None, move |canvas, _, _| {
-                canvas.rotate_by(PI / 5f32);
-            });
-
-            klass.install_action("canvas.rotate-left", None, move |canvas, _, _| {
-                canvas.rotate_by(PI / -5f32);
-            });
-
-            klass.install_action("canvas.rotate-reset", None, move |canvas, _, _| {
-                canvas.rotate_to(0f32);
-            });
+            CanvasAction::init_actions(klass);
 
             klass.install_action("canvas.print-state", None, move |canvas, _, _| {
                 println!(
@@ -761,7 +637,7 @@ impl BrushCanvas {
         imp.canvas.queue_draw();
     }
 
-    fn set_layer_blend(&self, blend_mode: BlendMode) {
+    fn set_layer_blend(&self, blend_mode: BrushBlendMode) {
         let imp = self.imp();
         let mut project = imp.project.borrow_mut();
         let mut widget_cache = self.imp().layer_widget_cache.borrow_mut();
@@ -1369,4 +1245,212 @@ fn interpolate_stroke(
         traveled += step_size;
     }
     points
+}
+
+#[derive(strum::Display, strum::EnumIter, strum::AsRefStr)]
+enum CanvasAction {
+    // Layer management
+    #[strum(to_string = "canvas.new-pixel")]
+    NewPixel,
+    #[strum(to_string = "canvas.new-group")]
+    NewGroup,
+    #[strum(to_string = "canvas.rename-layer")]
+    RenameLayer,
+    #[strum(to_string = "canvas.delete-layer")]
+    DeleteLayer,
+    #[strum(to_string = "move.move-layer-up")]
+    MoveLayerUp,
+    #[strum(to_string = "move.move-layer-down")]
+    MoveLayerDown,
+    // Viewport navigation
+    #[strum(to_string = "canvas.zoom-in")]
+    ZoomIn,
+    #[strum(to_string = "canvas.zoom-out")]
+    ZoomOut,
+    #[strum(to_string = "canvas.zoom-to-fit")]
+    ZoomToFit,
+    #[strum(to_string = "canvas.pan-up")]
+    PanUp,
+    #[strum(to_string = "canvas.pan-down")]
+    PanDown,
+    #[strum(to_string = "canvas.pan-left")]
+    PanLeft,
+    #[strum(to_string = "canvas.pan-up")]
+    PanRight,
+    #[strum(to_string = "canvas.rotate-right")]
+    RotateCW,
+    #[strum(to_string = "canvas.rotate-left")]
+    RotateCCW,
+    #[strum(to_string = "canvas.rotate-reset")]
+    RotateTo0,
+    // Layer modification
+    #[strum(to_string = "canvas.set-layer-opacity")]
+    SetLayerOpacity,
+    #[strum(to_string = "canvas.set-layer-blend")]
+    SetLayerBlendMode,
+    #[strum(to_string = "canvas.toggle-lock")]
+    ToggleLock,
+    #[strum(to_string = "canvas.toggle-visible")]
+    ToggleVisible,
+    #[strum(to_string = "canvas.toggle-alpha-clip")]
+    ToggleAlphaClip,
+    #[strum(to_string = "canvas.toggle-alpha-lock")]
+    ToggleAlphaLock,
+    #[strum(to_string = "canvas.toggle-passthrough")]
+    TogglePassthrough,
+}
+
+impl Deref for CanvasAction {
+    type Target = str;
+    fn deref(&self) -> &Self::Target {
+        self.as_ref()
+    }
+}
+
+impl CanvasAction {
+    // TODO: Setup accels here as well like in the editor
+    fn init_actions(klass: &mut <imp::BrushCanvas as ObjectSubclass>::Class) {
+        for action in Self::iter() {
+            match action {
+                CanvasAction::NewPixel => {
+                    klass.install_action(&action, None, |c, _, _| {
+                        let layer = c.new_pixel_layer();
+                        c.push_layer(layer);
+                    });
+                }
+                CanvasAction::NewGroup => {
+                    klass.install_action(&action, None, |c, _, _| {
+                        let layer = c.new_group_layer();
+                        c.push_layer(layer);
+                    });
+                }
+                CanvasAction::RenameLayer => {
+                    klass.install_action(
+                        &action,
+                        Some(VariantTy::STRING),
+                        move |c, _, arg| {
+                            if let Some(var) = arg {
+                                let value = var.to_string(); // 'Name'
+                                let name = value.get(1..value.len().sub(1)).unwrap(); // Remove quotes
+                                if let Some(active_layer) = c.imp().active_layer.get() {
+                                    c.rename_layer(active_layer, name.to_string());
+                                }
+                            }
+                        },
+                    );
+                }
+                CanvasAction::DeleteLayer => {
+                    klass.install_action(&action, None, |c, _, _| {
+                        c.remove_layer();
+                    });
+                }
+                CanvasAction::MoveLayerUp => {
+                    klass.install_action(&action, None, |c, _, _| {
+                        c.move_layer_up();
+                    });
+                }
+                CanvasAction::MoveLayerDown => {
+                    klass.install_action(&action, None, |c, _, _| {
+                        c.move_layer_down();
+                    });
+                }
+                // Viewport control
+                CanvasAction::ZoomIn => {
+                    klass.install_action(&action, None, |c, _, _| {
+                        c.zoom_by(0.05f32);
+                    });
+                }
+                CanvasAction::ZoomOut => {
+                    klass.install_action(&action, None, move |c, _, _| {
+                        c.zoom_by(-0.05f32);
+                    });
+                }
+                CanvasAction::ZoomToFit => {
+                    klass.install_action(&action, None, move |c, _, _| {
+                        c.zoom_to_fit();
+                    });
+                }
+                CanvasAction::PanUp => {
+                    klass.install_action(&action, None, move |c, _, _| {
+                        c.move_by(0f32, 60f32);
+                    });
+                }
+                CanvasAction::PanDown => {
+                    klass.install_action(&action, None, move |c, _, _| {
+                        c.move_by(0f32, -60f32);
+                    });
+                }
+                CanvasAction::PanLeft => {
+                    klass.install_action(&action, None, move |c, _, _| {
+                        c.move_by(60f32, 0f32);
+                    });
+                }
+                CanvasAction::PanRight => {
+                    klass.install_action(&action, None, move |c, _, _| {
+                        c.move_by(-60f32, 0f32);
+                    });
+                }
+                CanvasAction::RotateCW => {
+                    klass.install_action(&action, None, move |c, _, _| {
+                        c.rotate_by(PI / 5f32);
+                    });
+                }
+                CanvasAction::RotateCCW => {
+                    klass.install_action(&action, None, move |c, _, _| {
+                        c.rotate_by(PI / -5f32);
+                    });
+                }
+                CanvasAction::RotateTo0 => {
+                    klass.install_action(&action, None, move |c, _, _| {
+                        c.rotate_to(0f32);
+                    });
+                }
+                CanvasAction::SetLayerOpacity => {
+                    klass.install_action(&action, Some(VariantTy::DOUBLE), |c, _, arg| {
+                        if let Some(var) = arg
+                            && let Some(val) = var.get::<f64>()
+                        {
+                            c.set_layer_opacity(val as f32);
+                        }
+                    });
+                }
+                CanvasAction::SetLayerBlendMode => {
+                    klass.install_action(&action, Some(VariantTy::UINT32), |c, _, arg| {
+                        if let Some(var) = arg
+                            && let Some(val) = var.get::<u32>()
+                            && let Some(blend_mode) =
+                                BrushBlendMode::iter().take(val as usize + 1).next_back()
+                        {
+                            c.set_layer_blend(blend_mode);
+                        }
+                    });
+                }
+                CanvasAction::ToggleVisible => {
+                    klass.install_action(&action, None, |c, _, _| {
+                        c.toggle_visible();
+                    });
+                }
+                CanvasAction::ToggleLock => {
+                    klass.install_action(&action, None, |c, _, _| {
+                        c.toggle_lock();
+                    });
+                }
+                CanvasAction::ToggleAlphaClip => {
+                    klass.install_action(&action, None, |c, _, _| {
+                        c.toggle_alpha_clip();
+                    });
+                }
+                CanvasAction::ToggleAlphaLock => {
+                    klass.install_action(&action, None, |c, _, _| {
+                        c.toggle_alpha_lock();
+                    });
+                }
+                CanvasAction::TogglePassthrough => {
+                    klass.install_action(&action, None, |c, _, _| {
+                        c.toggle_passthrough();
+                    });
+                }
+            }
+        }
+    }
 }
