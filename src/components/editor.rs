@@ -44,12 +44,12 @@ use uuid::Uuid;
 
 use crate::{
     components::{
-        canvas::BrushCanvas,
+        canvas::{BrushCanvas, CanvasAction},
         color_chip::BrushColorChip,
         color_selector::BrushColorSelector,
         layer_item::BrushLayerItem,
         layer_tree::BrushLayerTree,
-        utils::{color::to_rgba, editor_state::BrushEditorState, tools::BrushTool},
+        utils::{color::to_rgba, editor_state::BrushEditorState, tools::BrushTool}, window::WindowActions,
     },
     data::{blend_modes::BrushBlendMode, project::BrushProject},
 };
@@ -500,7 +500,7 @@ impl BrushEditor {
 }
 
 #[derive(strum::Display, strum::EnumIter, strum::AsRefStr)]
-enum EditorAction {
+pub enum EditorAction {
     // Document management
     #[strum(to_string = "editor.new-tab")]
     NewTab,
@@ -568,7 +568,7 @@ impl EditorAction {
                         e.new_tab();
                         let _ = adw::prelude::WidgetExt::activate_action(
                             e,
-                            "win.should-open-editor",
+                            &WindowActions::OpenEditor,
                             None,
                         );
                     });
@@ -682,7 +682,7 @@ impl EditorAction {
                 Self::NewPixel => {
                     klass.install_action(&action, None, |e, _, _| {
                         if let Some(tab) = e.current_page() {
-                            let _ = tab.activate_action("canvas.new-pixel", None);
+                            let _ = tab.activate_action(&CanvasAction::NewPixel, None);
                             e.sync_project(&tab);
                         }
                     });
@@ -696,7 +696,7 @@ impl EditorAction {
                 Self::NewGroup => {
                     klass.install_action(&action, None, |e, _, _| {
                         if let Some(tab) = e.current_page() {
-                            let _ = tab.activate_action("canvas.new-group", None);
+                            let _ = tab.activate_action(&CanvasAction::NewGroup, None);
                             e.sync_project(&tab);
                         }
                     });
@@ -721,7 +721,7 @@ impl EditorAction {
                 Self::DeleteLayer => {
                     klass.install_action(&action, None, |e, _, _| {
                         if let Some(tab) = e.current_page() {
-                            let _ = tab.activate_action("canvas.delete-layer", None);
+                            let _ = tab.activate_action(&CanvasAction::DeleteLayer, None);
                             e.sync_project(&tab);
                         }
                     });
@@ -729,7 +729,7 @@ impl EditorAction {
                 Self::MoveLayerUp => {
                     klass.install_action(&action, None, |e, _, _| {
                         if let Some(tab) = e.current_page() {
-                            let _ = tab.activate_action("canvas.move-layer-up", None);
+                            let _ = tab.activate_action(&CanvasAction::MoveLayerUp, None);
                             e.sync_project(&tab);
                         }
                     });
@@ -739,7 +739,7 @@ impl EditorAction {
                 Self::MoveLayerDown => {
                     klass.install_action(&action, None, |e, _, _| {
                         if let Some(tab) = e.current_page() {
-                            let _ = tab.activate_action("canvas.move-layer-down", None);
+                            let _ = tab.activate_action(&CanvasAction::MoveLayerDown, None);
                             e.sync_project(&tab);
                         }
                     });
@@ -750,7 +750,7 @@ impl EditorAction {
                 Self::SetLayerOpacity => {
                     klass.install_action(&action, Some(VariantTy::DOUBLE), |e, _, arg| {
                         if let Some(tab) = e.current_page() {
-                            let _ = tab.activate_action("canvas.set-layer-opacity", arg);
+                            let _ = tab.activate_action(&CanvasAction::SetLayerOpacity, arg);
                             e.sync_project(&tab);
                         }
                     });
@@ -758,7 +758,7 @@ impl EditorAction {
                 Self::SetLayerBlendMode => {
                     klass.install_action(&action, Some(VariantTy::UINT32), |e, _, arg| {
                         if let Some(tab) = e.current_page() {
-                            let _ = tab.activate_action("canvas.set-layer-blend", arg);
+                            let _ = tab.activate_action(&CanvasAction::SetLayerBlendMode, arg);
                             e.sync_project(&tab);
                         }
                     });
@@ -766,7 +766,7 @@ impl EditorAction {
                 Self::ToggleVisible => {
                     klass.install_action(&action, None, |e, _, _| {
                         if let Some(tab) = e.current_page() {
-                            let _ = tab.activate_action("canvas.toggle-visible", None);
+                            let _ = tab.activate_action(&CanvasAction::ToggleVisible, None);
                             e.sync_project(&tab);
                         }
                     });
@@ -774,7 +774,7 @@ impl EditorAction {
                 Self::ToggleAlphaClip => {
                     klass.install_action(&action, None, |e, _, _| {
                         if let Some(tab) = e.current_page() {
-                            let _ = tab.activate_action("canvas.toggle-alpha-clip", None);
+                            let _ = tab.activate_action(&CanvasAction::ToggleAlphaClip, None);
                             e.sync_project(&tab);
                         }
                     });
@@ -782,7 +782,7 @@ impl EditorAction {
                 Self::ToggleAlphaLock => {
                     klass.install_action(&action, None, |e, _, _| {
                         if let Some(tab) = e.current_page() {
-                            let _ = tab.activate_action("canvas.toggle-alpha-lock", None);
+                            let _ = tab.activate_action(&CanvasAction::ToggleAlphaLock, None);
                             e.sync_project(&tab);
                         }
                     });
@@ -790,7 +790,7 @@ impl EditorAction {
                 Self::TogglePassthrough => {
                     klass.install_action(&action, None, |e, _, _| {
                         if let Some(tab) = e.current_page() {
-                            let _ = tab.activate_action("canvas.toggle-passthrough", None);
+                            let _ = tab.activate_action(&CanvasAction::TogglePassthrough, None);
                             e.sync_project(&tab);
                         }
                     });
@@ -798,7 +798,7 @@ impl EditorAction {
                 Self::ToggleLock => {
                     klass.install_action(&action, None, |e, _, _| {
                         if let Some(tab) = e.current_page() {
-                            let _ = tab.activate_action("canvas.toggle-lock", None);
+                            let _ = tab.activate_action(&CanvasAction::ToggleLock, None);
                             e.sync_project(&tab);
                         }
                     });

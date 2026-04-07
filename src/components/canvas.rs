@@ -128,9 +128,20 @@ mod imp {
 
             let obj = self.obj();
 
+            // Make shortcut controller have a managed scope so accels work without focused
+            {
+                let list = obj.observe_controllers();
+
+                for i in 0..list.n_items() {
+                    if let Some(controller) = list.item(i).and_downcast::<gtk::ShortcutController>()
+                    {
+                        controller.set_scope(gtk::ShortcutScope::Managed);
+                    }
+                }
+            }
+
             obj.clear_mask();
 
-            obj.setup_accels_controller();
             obj.setup_motion_controller();
             obj.setup_scroll_controller();
             obj.setup_drag_controller();
@@ -992,93 +1003,6 @@ impl BrushCanvas {
         self.add_controller(motion);
     }
 
-    fn setup_accels_controller(&self) {
-        let controller = gtk::ShortcutController::new();
-        controller.set_scope(gtk::ShortcutScope::Global);
-
-        controller.add_shortcut(gtk::Shortcut::new(
-            Some(gtk::KeyvalTrigger::new(
-                gdk::Key::minus,
-                gdk::ModifierType::NO_MODIFIER_MASK,
-            )),
-            Some(gtk::NamedAction::new("canvas.zoom-out")),
-        ));
-
-        controller.add_shortcut(gtk::Shortcut::new(
-            Some(gtk::KeyvalTrigger::new(
-                gdk::Key::equal,
-                gdk::ModifierType::NO_MODIFIER_MASK,
-            )),
-            Some(gtk::NamedAction::new("canvas.zoom-in")),
-        ));
-
-        controller.add_shortcut(gtk::Shortcut::new(
-            Some(gtk::KeyvalTrigger::new(
-                gdk::Key::Home,
-                gdk::ModifierType::NO_MODIFIER_MASK,
-            )),
-            Some(gtk::NamedAction::new("canvas.zoom-to-fit")),
-        ));
-
-        controller.add_shortcut(gtk::Shortcut::new(
-            Some(gtk::KeyvalTrigger::new(
-                gdk::Key::bracketleft,
-                gdk::ModifierType::CONTROL_MASK,
-            )),
-            Some(gtk::NamedAction::new("canvas.rotate-left")),
-        ));
-
-        controller.add_shortcut(gtk::Shortcut::new(
-            Some(gtk::KeyvalTrigger::new(
-                gdk::Key::bracketright,
-                gdk::ModifierType::CONTROL_MASK,
-            )),
-            Some(gtk::NamedAction::new("canvas.rotate-right")),
-        ));
-
-        controller.add_shortcut(gtk::Shortcut::new(
-            Some(gtk::KeyvalTrigger::new(
-                gdk::Key::Home,
-                gdk::ModifierType::SHIFT_MASK,
-            )),
-            Some(gtk::NamedAction::new("canvas.rotate-reset")),
-        ));
-
-        controller.add_shortcut(gtk::Shortcut::new(
-            Some(gtk::KeyvalTrigger::new(
-                gdk::Key::Up,
-                gdk::ModifierType::SHIFT_MASK,
-            )),
-            Some(gtk::NamedAction::new("canvas.pan-up")),
-        ));
-
-        controller.add_shortcut(gtk::Shortcut::new(
-            Some(gtk::KeyvalTrigger::new(
-                gdk::Key::Down,
-                gdk::ModifierType::SHIFT_MASK,
-            )),
-            Some(gtk::NamedAction::new("canvas.pan-down")),
-        ));
-
-        controller.add_shortcut(gtk::Shortcut::new(
-            Some(gtk::KeyvalTrigger::new(
-                gdk::Key::Right,
-                gdk::ModifierType::SHIFT_MASK,
-            )),
-            Some(gtk::NamedAction::new("canvas.pan-right")),
-        ));
-
-        controller.add_shortcut(gtk::Shortcut::new(
-            Some(gtk::KeyvalTrigger::new(
-                gdk::Key::Left,
-                gdk::ModifierType::SHIFT_MASK,
-            )),
-            Some(gtk::NamedAction::new("canvas.pan-left")),
-        ));
-
-        self.add_controller(controller);
-    }
-
     fn setup_scroll_controller(&self) {
         let scroll = gtk::EventControllerScroll::new(gtk::EventControllerScrollFlags::VERTICAL);
 
@@ -1248,7 +1172,7 @@ fn interpolate_stroke(
 }
 
 #[derive(strum::Display, strum::EnumIter, strum::AsRefStr)]
-enum CanvasAction {
+pub enum CanvasAction {
     // Layer management
     #[strum(to_string = "canvas.new-pixel")]
     NewPixel,
@@ -1325,19 +1249,15 @@ impl CanvasAction {
                     });
                 }
                 CanvasAction::RenameLayer => {
-                    klass.install_action(
-                        &action,
-                        Some(VariantTy::STRING),
-                        move |c, _, arg| {
-                            if let Some(var) = arg {
-                                let value = var.to_string(); // 'Name'
-                                let name = value.get(1..value.len().sub(1)).unwrap(); // Remove quotes
-                                if let Some(active_layer) = c.imp().active_layer.get() {
-                                    c.rename_layer(active_layer, name.to_string());
-                                }
+                    klass.install_action(&action, Some(VariantTy::STRING), move |c, _, arg| {
+                        if let Some(var) = arg {
+                            let value = var.to_string(); // 'Name'
+                            let name = value.get(1..value.len().sub(1)).unwrap(); // Remove quotes
+                            if let Some(active_layer) = c.imp().active_layer.get() {
+                                c.rename_layer(active_layer, name.to_string());
                             }
-                        },
-                    );
+                        }
+                    });
                 }
                 CanvasAction::DeleteLayer => {
                     klass.install_action(&action, None, |c, _, _| {
@@ -1359,51 +1279,117 @@ impl CanvasAction {
                     klass.install_action(&action, None, |c, _, _| {
                         c.zoom_by(0.05f32);
                     });
+
+                    klass.add_binding_action(
+                        gdk::Key::plus,
+                        gdk::ModifierType::NO_MODIFIER_MASK,
+                        &action,
+                    );
+
+                    klass.add_binding_action(
+                        gdk::Key::equal,
+                        gdk::ModifierType::NO_MODIFIER_MASK,
+                        &action,
+                    );
                 }
                 CanvasAction::ZoomOut => {
                     klass.install_action(&action, None, move |c, _, _| {
                         c.zoom_by(-0.05f32);
                     });
+
+                    klass.add_binding_action(
+                        gdk::Key::minus,
+                        gdk::ModifierType::NO_MODIFIER_MASK,
+                        &action,
+                    );
                 }
                 CanvasAction::ZoomToFit => {
                     klass.install_action(&action, None, move |c, _, _| {
                         c.zoom_to_fit();
                     });
+
+                    klass.add_binding_action(
+                        gdk::Key::Home,
+                        gdk::ModifierType::NO_MODIFIER_MASK,
+                        &action,
+                    );
                 }
                 CanvasAction::PanUp => {
                     klass.install_action(&action, None, move |c, _, _| {
                         c.move_by(0f32, 60f32);
                     });
+
+                    klass.add_binding_action(
+                        gdk::Key::Up,
+                        gdk::ModifierType::NO_MODIFIER_MASK,
+                        &action,
+                    );
                 }
                 CanvasAction::PanDown => {
                     klass.install_action(&action, None, move |c, _, _| {
                         c.move_by(0f32, -60f32);
                     });
+
+                    klass.add_binding_action(
+                        gdk::Key::Down,
+                        gdk::ModifierType::NO_MODIFIER_MASK,
+                        &action,
+                    );
                 }
                 CanvasAction::PanLeft => {
                     klass.install_action(&action, None, move |c, _, _| {
                         c.move_by(60f32, 0f32);
                     });
+
+                    klass.add_binding_action(
+                        gdk::Key::Left,
+                        gdk::ModifierType::NO_MODIFIER_MASK,
+                        &action,
+                    );
                 }
                 CanvasAction::PanRight => {
                     klass.install_action(&action, None, move |c, _, _| {
                         c.move_by(-60f32, 0f32);
                     });
+
+                    klass.add_binding_action(
+                        gdk::Key::Right,
+                        gdk::ModifierType::NO_MODIFIER_MASK,
+                        &action,
+                    );
                 }
                 CanvasAction::RotateCW => {
                     klass.install_action(&action, None, move |c, _, _| {
                         c.rotate_by(PI / 5f32);
                     });
+
+                    klass.add_binding_action(
+                        gdk::Key::bracketright,
+                        gdk::ModifierType::CONTROL_MASK,
+                        &action,
+                    );
                 }
                 CanvasAction::RotateCCW => {
                     klass.install_action(&action, None, move |c, _, _| {
                         c.rotate_by(PI / -5f32);
                     });
+
+                    klass.add_binding_action(
+                        gdk::Key::bracketleft,
+                        gdk::ModifierType::CONTROL_MASK,
+                        &action,
+                    );
                 }
                 CanvasAction::RotateTo0 => {
                     klass.install_action(&action, None, move |c, _, _| {
                         c.rotate_to(0f32);
                     });
+
+                    klass.add_binding_action(
+                        gdk::Key::Home,
+                        gdk::ModifierType::SHIFT_MASK,
+                        &action,
+                    );
                 }
                 CanvasAction::SetLayerOpacity => {
                     klass.install_action(&action, Some(VariantTy::DOUBLE), |c, _, arg| {

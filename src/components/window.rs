@@ -20,7 +20,7 @@
 
 use std::ops::Deref;
 
-use crate::components::editor::BrushEditor;
+use crate::components::editor::{BrushEditor, EditorAction};
 use crate::components::welcome::BrushWelcome;
 use adw::prelude::*;
 use adw::subclass::prelude::*;
@@ -120,7 +120,7 @@ impl BrushWindow {
 }
 
 #[derive(strum::Display, strum::AsRefStr, strum::EnumIter)]
-enum WindowActions {
+pub enum WindowActions {
     #[strum(to_string = "win.new-document")]
     NewDocument,
     #[strum(to_string = "win.should-open-editor")]
@@ -143,7 +143,7 @@ impl WindowActions {
                 Self::NewDocument => {
                     klass.install_action(&action, None, |win, _, _| {
                         let tab_view = &win.imp().editor.imp().tab_view;
-                        let _ = tab_view.activate_action("editor.new-tab", None);
+                        let _ = tab_view.activate_action(&EditorAction::NewTab, None);
                     });
 
                     klass.add_binding_action(gdk::Key::N, gdk::ModifierType::CONTROL_MASK, &action);
