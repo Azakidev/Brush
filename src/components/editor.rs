@@ -654,13 +654,38 @@ impl EditorAction {
                     klass.install_property_action(&action, "active_tool");
 
                     // TODO: Binds for the rest of the tools
-                    klass.add_binding(gdk::Key::A, gdk::ModifierType::NO_MODIFIER_MASK, |e| {
+                    klass.add_binding(gdk::Key::B, gdk::ModifierType::NO_MODIFIER_MASK, |e| {
+                        e.set_active_tool(BrushTool::Brush.as_ref());
+                        glib::Propagation::Stop
+                    });
+
+                    klass.add_binding(gdk::Key::F, gdk::ModifierType::NO_MODIFIER_MASK, |e| {
+                        e.set_active_tool(BrushTool::Fill.as_ref());
+                        glib::Propagation::Stop
+                    });
+
+                    klass.add_binding(gdk::Key::R, gdk::ModifierType::NO_MODIFIER_MASK, |e| {
+                        e.set_active_tool(BrushTool::Box.as_ref());
+                        glib::Propagation::Stop
+                    });
+
+                    klass.add_binding(gdk::Key::J, gdk::ModifierType::NO_MODIFIER_MASK, |e| {
+                        e.set_active_tool(BrushTool::Ellipse.as_ref());
+                        glib::Propagation::Stop
+                    });
+
+                    klass.add_binding(gdk::Key::S, gdk::ModifierType::NO_MODIFIER_MASK, |e| {
                         e.set_active_tool(BrushTool::SelectBox.as_ref());
                         glib::Propagation::Stop
                     });
 
-                    klass.add_binding(gdk::Key::B, gdk::ModifierType::NO_MODIFIER_MASK, |e| {
-                        e.set_active_tool(BrushTool::Brush.as_ref());
+                    klass.add_binding(gdk::Key::A, gdk::ModifierType::NO_MODIFIER_MASK, |e| {
+                        e.set_active_tool(BrushTool::SelectLasso.as_ref());
+                        glib::Propagation::Stop
+                    });
+
+                    klass.add_binding(gdk::Key::W, gdk::ModifierType::NO_MODIFIER_MASK, |e| {
+                        e.set_active_tool(BrushTool::SelectWand.as_ref());
                         glib::Propagation::Stop
                     });
                 }

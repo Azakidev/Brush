@@ -12,10 +12,11 @@ Heavily inspired by [Krita](https://krita.org/), as is what I use day to day for
 ## TODO
 - [ ] Saving and loading
 - [ ] Exporting (glycin)
-- [ ] Alpha locking
+- [x] Alpha locking
 - [ ] Brush engine
-    - [ ] Paint dab blending
-    - [ ] Paint dab interpolation
+    - [x] Paint dab blending
+    - [x] Paint stroke interpolation
+    - [ ] Paint stroke smoothing/stabilizing
     - [ ] Brush types
 - [ ] Settings and resource handling
     - [ ] Preferences
@@ -29,9 +30,11 @@ Heavily inspired by [Krita](https://krita.org/), as is what I use day to day for
     - [ ] Select box
     - [ ] Select ellipse
     - [ ] Select wand
+    - [ ] Transform
 - [ ] Canvas interaction
     - [ ] Middle-click / space move
     - [ ] Up/down layer traversal hotkeys
+    - [ ] Mirror canvas toggles
     - [ ] Layer dragging
     - [ ] Undo/redo
     - [ ] Layer opacity spin button
