@@ -20,13 +20,16 @@
 
 use adw::subclass::prelude::*;
 use gtk::glib;
+
+use crate::config::APP_ID;
 mod imp {
     use super::*;
 
     #[derive(Debug, Default, gtk::CompositeTemplate)]
     #[template(resource = "/art/FatDawlf/Brush/welcome.ui")]
     pub struct BrushWelcome {
-        // Template widgets
+        #[template_child]
+        pub welcome_status: TemplateChild<adw::StatusPage>,
         #[template_child]
         new_document: TemplateChild<gtk::Button>,
         #[template_child]
@@ -48,7 +51,12 @@ mod imp {
         }
     }
 
-    impl ObjectImpl for BrushWelcome {}
+    impl ObjectImpl for BrushWelcome {
+        fn constructed(&self) {
+            self.parent_constructed();
+            self.welcome_status.set_icon_name(Some(APP_ID));
+        }
+    }
     impl WidgetImpl for BrushWelcome {}
     impl BoxImpl for BrushWelcome {}
 }

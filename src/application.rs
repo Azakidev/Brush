@@ -65,6 +65,25 @@ mod imp {
             // Ask the window manager/compositor to present the window
             window.present();
         }
+
+        fn open(&self, files: &[gio::File], _hint: &str) {
+            let application = self.obj();
+            // Get the current window or create one if necessary
+            let win = application.active_window().unwrap_or_else(|| {
+                let win = BrushWindow::new(&*application);
+                for file in files {
+                    if let Some(path) = file.path() {
+                        win.open_file(path.to_str().unwrap());
+                    }
+                }
+                win.upcast()
+            });
+
+            application.setup_icons();
+
+            // Ask the window manager/compositor to present the window
+            win.present();
+        }
     }
 
     impl GtkApplicationImpl for BrushApplication {}

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">
+  <mime-type type="application/x-brush">
+    <comment>Brush Project</comment>
+    <glob pattern="*.bsh"/>
+    <magic priority="50">
+      <match type="string" offset="30" value="application/x-brush"/>
+    </magic>
+  </mime-type>
+</mime-info>

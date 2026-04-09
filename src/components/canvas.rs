@@ -50,7 +50,12 @@ use crate::{
             tools::BrushTool,
         },
     },
-    data::{blend_modes::BrushBlendMode, file::save_project, layer::Layer, project::BrushProject},
+    data::{
+        blend_modes::BrushBlendMode,
+        file::{request_save, save_project},
+        layer::Layer,
+        project::BrushProject,
+    },
 };
 use strum::IntoEnumIterator;
 
@@ -271,7 +276,7 @@ impl BrushCanvas {
     }
 
     // Layer management
-    pub fn new_pixel_layer(&self) -> Layer {
+    fn new_pixel_layer(&self) -> Layer {
         let context = self.imp().project.borrow_mut();
 
         let name = "New pixel layer".to_owned();
@@ -281,12 +286,12 @@ impl BrushCanvas {
         Layer::new_pixel(name, width, height)
     }
 
-    pub fn new_group_layer(&self) -> Layer {
+    fn new_group_layer(&self) -> Layer {
         let name = "New Group".to_owned();
         Layer::new_group(name)
     }
 
-    pub fn push_layer(&self, layer: Layer) {
+    fn push_layer(&self, layer: Layer) {
         {
             let mut project = self.imp().project.borrow_mut();
 
@@ -339,7 +344,7 @@ impl BrushCanvas {
         self.imp().canvas.queue_draw();
     }
 
-    pub fn remove_layer(&self) {
+    fn remove_layer(&self) {
         let imp = self.imp();
         let mut project = imp.project.borrow_mut();
         let mut widget_cache = imp.layer_widget_cache.borrow_mut();
@@ -402,7 +407,7 @@ impl BrushCanvas {
         self.imp().canvas.queue_draw();
     }
 
-    pub fn move_layer_up(&self) {
+    fn move_layer_up(&self) {
         let mut project = self.imp().project.borrow_mut();
         let mut widget_cache = self.imp().layer_widget_cache.borrow_mut();
         let mut buf_cache = self.imp().buffer_cache.borrow_mut();
@@ -515,7 +520,7 @@ impl BrushCanvas {
         self.imp().canvas.queue_draw();
     }
 
-    pub fn move_layer_down(&self) {
+    fn move_layer_down(&self) {
         let mut project = self.imp().project.borrow_mut();
         let mut widget_cache = self.imp().layer_widget_cache.borrow_mut();
         let mut buf_cache = self.imp().buffer_cache.borrow_mut();
@@ -727,21 +732,11 @@ impl BrushCanvas {
         if let Some(loc) = imp.file_location.borrow().as_deref() {
             // File string set
             let path = Path::new(&loc);
-            if path.exists() {
-                // File exists, proceed to write
-                println!("Overwriting file");
-                if let Some(pixels) =
-                    self.get_composite(project.width as i32, project.height as i32)
-                {
-                    let result = save_project(path, &project, &pixels);
-                    self.save_feedback(result);
-                } else {
-                    self.save_feedback(Err(ZipError::FileNotFound));
-                }
+            if let Some(pixels) = self.get_composite(project.width as i32, project.height as i32) {
+                let result = save_project(path, &project, &pixels);
+                self.save_feedback(result);
             } else {
-                // File was deleted, prompt user
-                println!("File missing, reprompting");
-                self.save_project_as(project, true);
+                self.save_feedback(Err(ZipError::FileNotFound));
             }
         } else {
             // Location not set, prompt user
@@ -751,19 +746,22 @@ impl BrushCanvas {
     }
 
     fn save_project_as(&self, project: BrushProject, swap_to: bool) {
-        let imp = self.imp();
-
-        let path = self.prompt_save();
-        if swap_to && let Some(loc) = path.to_str() {
-            imp.file_location.replace(Some(loc.to_string()));
-        }
-
-        if let Some(pixels) = self.get_composite(project.width as i32, project.height as i32) {
-            let result = save_project(path, &project, &pixels);
-            self.save_feedback(result);
-        } else {
-            self.save_feedback(Err(ZipError::FileNotFound));
-        }
+        glib::spawn_future_local(glib::clone!(
+            #[weak(rename_to = obj)]
+            self,
+            #[strong]
+            project,
+            async move {
+                if let Ok(file) = request_save().await {
+                    if swap_to {
+                        obj.imp()
+                            .file_location
+                            .replace(Some(file.as_path().to_str().unwrap().to_owned()));
+                    }
+                    obj.save_project(project);
+                }
+            }
+        ));
     }
 
     fn get_composite(&self, width: i32, height: i32) -> Option<Vec<u8>> {
@@ -797,12 +795,6 @@ impl BrushCanvas {
                 eprintln!("{e}");
             }
         }
-    }
-
-    fn prompt_save(&self) -> &Path {
-        // TODO: Prompt with ashpd file picker portal
-        let path = Path::new("tst.bsh");
-        path
     }
 
     // Viewport control

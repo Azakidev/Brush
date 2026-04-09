@@ -10,7 +10,12 @@ resolver = "2"
 # Utils
 color = { version = "0.3", features = ["bytemuck"] }
 uuid = { version = "1.22", features = ["v4"] }
-ashpd = { version = "0.13" }
+ashpd = { version = "0.13", default-features = false, features = [
+    "gtk4",
+    "async-io",
+    "file_chooser",
+] }
+url = { version = "2.5" }
 zip = { version = "8.5" }
 image = { version = "0.25" }
 

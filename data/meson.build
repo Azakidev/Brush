@@ -6,7 +6,6 @@ conf.set('BIN_NAME', bin_name)
 conf.set('SUFFIX', get_option('app_id_suffix'))
 conf.set('MIME_TYPES', ';'.join(mime_types) + ';')
 
-
 desktop_file = i18n.merge_file(
   input: configure_file(
     input: 'art.FatDawlf.Brush.desktop.in.in',
@@ -55,10 +54,23 @@ test(
 service_conf = configuration_data()
 service_conf.set('bindir', get_option('prefix') / get_option('bindir'))
 configure_file(
-  input: 'art.FatDawlf.Brush.service.in',
-  output: 'art.FatDawlf.Brush.service',
+  input: configure_file(
+    input: 'art.FatDawlf.Brush.service.in.in',
+    output: '@0@.service.in'.format(app_id),
+    configuration: conf,
+  ),
+  output: '@0@.service'.format(app_id),
   configuration: service_conf,
   install_dir: get_option('datadir') / 'dbus-1' / 'services',
 )
+
+# MIME type definition
+install_data(
+  'art.FatDawlf.Brush.xml',
+  install_dir: get_option('datadir') / 'mime' / 'packages',
+)
+
+# Thumbnailer entry
+install_data('brush.thumbnailer', install_dir: get_option('datadir') / 'thumbnailers')
 
 subdir('icons')

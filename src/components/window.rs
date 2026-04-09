@@ -18,14 +18,13 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
+use adw::{gdk, gio, glib, prelude::*, subclass::prelude::*};
 use std::ops::Deref;
+use strum::IntoEnumIterator;
 
 use crate::components::editor::{BrushEditor, EditorAction};
 use crate::components::welcome::BrushWelcome;
-use adw::prelude::*;
-use adw::subclass::prelude::*;
-use gtk::{gdk, gio, glib};
-use strum::IntoEnumIterator;
+use crate::data::file::request_open;
 
 mod imp {
     use crate::config;
@@ -117,12 +116,33 @@ impl BrushWindow {
             editor.obj().release_focus();
         }
     }
+
+    pub fn open_file(&self, path: &str) {
+        let tab_view = &self.imp().editor.imp().tab_view;
+
+        let _ = tab_view.activate_action(&EditorAction::OpenProject, Some(&path.to_variant()));
+    }
+
+    fn request_open(&self) {
+        glib::spawn_future_local(glib::clone!(
+            #[weak(rename_to = obj)]
+            self,
+            async move {
+                if let Ok(files) = request_open().await {
+                    let file = files[0].as_str();
+                    obj.open_file(file);
+                }
+            }
+        ));
+    }
 }
 
 #[derive(strum::Display, strum::AsRefStr, strum::EnumIter)]
 pub enum WindowActions {
     #[strum(to_string = "win.new-document")]
     NewDocument,
+    #[strum(to_string = "win.open-document")]
+    OpenDocument,
     #[strum(to_string = "win.should-open-editor")]
     OpenEditor,
     #[strum(to_string = "win.should-close-editor")]
@@ -147,6 +167,13 @@ impl WindowActions {
                     });
 
                     klass.add_binding_action(gdk::Key::N, gdk::ModifierType::CONTROL_MASK, &action);
+                }
+                Self::OpenDocument => {
+                    klass.install_action(&action, None, |win, _, _| {
+                        win.request_open();
+                    });
+
+                    klass.add_binding_action(gdk::Key::O, gdk::ModifierType::CONTROL_MASK, &action);
                 }
                 Self::OpenEditor => {
                     klass.install_action(&action, None, |win, _, _| {

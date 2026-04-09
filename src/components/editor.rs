@@ -49,7 +49,8 @@ use crate::{
         color_selector::BrushColorSelector,
         layer_item::BrushLayerItem,
         layer_tree::BrushLayerTree,
-        utils::{color::to_rgba, editor_state::BrushEditorState, tools::BrushTool}, window::WindowActions,
+        utils::{color::to_rgba, editor_state::BrushEditorState, tools::BrushTool},
+        window::WindowActions,
     },
     data::{blend_modes::BrushBlendMode, project::BrushProject},
 };
@@ -386,7 +387,9 @@ impl BrushEditor {
         {
             let opacity = layer.opacity();
             let blend_mode = layer.blend_mode();
-            let blend_idx = BrushBlendMode::iter().position(|b| b == blend_mode).unwrap();
+            let blend_idx = BrushBlendMode::iter()
+                .position(|b| b == blend_mode)
+                .unwrap();
 
             // Update
             layer_tree.should_update.set(false);
@@ -473,6 +476,18 @@ impl BrushEditor {
         tab_page
     }
 
+    fn open_document(&self, _path: &str) -> adw::TabPage {
+        let tab_view = &self.imp().tab_view;
+
+        // TODO: File opening
+        let editor_content = BrushCanvas::new(self.imp().editor_state.clone());
+
+        let tab_page = tab_view.append(&editor_content);
+        tab_page.set_live_thumbnail(true);
+
+        tab_page
+    }
+
     /**
     This function should be responsible for creating and adding a new tab to the view.
 
@@ -480,12 +495,13 @@ impl BrushEditor {
     Otherwise, it should prompt for a new document dialog
     and properly generate a new project in memory to be saved by the user.
     */
-    fn new_tab(
-        &self,
-        // file: Option<File> or something
-    ) {
+    fn new_tab(&self, file: Option<&str>) {
         let tab_view = &self.imp().tab_view;
-        let tab_page = self.new_document();
+
+        let tab_page = match file {
+            Some(f) => self.open_document(f),
+            None => self.new_document(),
+        };
 
         tab_view.set_selected_page(&tab_page);
     }
@@ -522,6 +538,8 @@ pub enum EditorAction {
     #[strum(to_string = "editor.toggle-erase")]
     ToggleErase,
     // Project management
+    #[strum(to_string = "editor.open")]
+    OpenProject,
     #[strum(to_string = "editor.save")]
     SaveProject,
     #[strum(to_string = "editor.save-as")]
@@ -572,12 +590,8 @@ impl EditorAction {
                 // Document management
                 Self::NewTab => {
                     klass.install_action(&action, None, |e, _, _| {
-                        e.new_tab();
-                        let _ = adw::prelude::WidgetExt::activate_action(
-                            e,
-                            &WindowActions::OpenEditor,
-                            None,
-                        );
+                        e.new_tab(None);
+                        let _ = e.activate_action(&WindowActions::OpenEditor, None);
                     });
                 }
                 Self::CloseTab => {
@@ -711,6 +725,17 @@ impl EditorAction {
                     );
                 }
                 // Project handling
+                Self::OpenProject => {
+                    klass.install_action(&action, Some(VariantTy::STRING), |e, _, arg| {
+                        if let Some(var) = arg {
+                            let value = var.to_string(); // 'path'
+                            println!("{value}");
+                            let path = value.get(1..value.len().sub(1)); // Remove quotes
+                            e.new_tab(path);
+                            let _ = e.activate_action(&WindowActions::OpenEditor, None);
+                        }
+                    });
+                }
                 Self::SaveProject => {
                     klass.install_action(&action, None, |e, _, _| {
                         if let Some(tab) = e.current_page() {

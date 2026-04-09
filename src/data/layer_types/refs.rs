@@ -19,6 +19,7 @@
  */
 
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 use crate::data::{
     layer::{BrushLayer, LayerParameter},
@@ -47,4 +48,16 @@ impl LayerParameter for RefLayerParameters {
         false
     }
     fn set_lock(&mut self, _lock: bool) {} // No-op
+}
+
+impl RefLayer {
+    pub fn id(&self) -> Uuid {
+        let RefLayer(i) = self;
+        Uuid::parse_str(&i.id).unwrap()
+    }
+
+    pub fn pixel_data(&self) -> &Vec<f32> {
+        let RefLayer(i) = self;
+        &i.data.pixels
+    }
 }

@@ -6,7 +6,7 @@ Icon=@APP_ID@
 Terminal=false
 Type=Application
 
-Categories=Gtk;Graphics;2DGraphics;
+Categories=Graphics;2DGraphics;
 MimeType=@MIME_TYPES@
 
 StartupNotify=true

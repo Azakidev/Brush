@@ -458,12 +458,12 @@ where
     T: LayerParameter,
     D: LayerData,
 {
-    id: String,
-    name: String,
+    pub id: String,
+    pub name: String,
 
-    filters: Vec<Layer>,
-    parameters: T,
-    data: D,
+    pub filters: Vec<Layer>,
+    pub parameters: T,
+    pub data: D,
 
     // Flags
     #[serde(skip_serializing)]
