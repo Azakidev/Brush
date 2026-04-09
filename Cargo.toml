@@ -10,11 +10,15 @@ resolver = "2"
 # Utils
 color = { version = "0.3", features = ["bytemuck"] }
 uuid = { version = "1.22", features = ["v4"] }
-strum = { version = "0.28", features = ["derive"]}
+ashpd = { version = "0.13" }
+zip = { version = "8.5" }
+image = { version = "0.25" }
+
+strum = { version = "0.28", features = ["derive"] }
 struct_iterable = { version = "0.1" }
-rayon = { version = "1.11" }
 serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
+serde_json = { version = "1.0" }
+rayon = { version = "1.11" }
 
 # Rendering and math
 glow = { version = "0.17" }

@@ -18,47 +18,158 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-use std::path::Path;
+use std::{
+    fs::File,
+    io::{Cursor, ErrorKind, Write},
+    path::Path,
+};
 
 use uuid::Uuid;
+use zip::{
+    ZipWriter,
+    result::{ZipError, ZipResult},
+    write::SimpleFileOptions,
+};
 
 use crate::data::{layer::Layer, project::BrushProject};
 
-#[allow(dead_code)]
-pub fn save_project(_path: &Path, project: &BrushProject) {
-    // Walk through each layer and save it
-    save_layers(&project.layers);
+pub fn save_project(path: &Path, project: &BrushProject, preview: &[u8]) -> ZipResult<()> {
+    println!("Making the zip");
+    let mut zip = prepare_zip(path)?;
+    println!("Zip made");
     // Save the main project structure
-    if let Ok(_structure) = serde_json::to_string(project) {
-        todo!();
-    }
-    // TODO Generate a preview
-    // TODO Commit the file
+    save_structure(&mut zip, project)?;
+    println!("Structure saved");
+    // Walk through each layer and save it
+    save_layers(&mut zip, &project.layers)?;
+    println!("Layers saved");
+    // Generate a preview
+    save_preview(&mut zip, project, preview)?;
+    println!("Preview saved");
+    // Commit the file
+    zip.finish()?;
+    println!("Save finished");
+    Ok(())
 }
 
-#[allow(dead_code)]
-fn save_layers(layers: &Vec<Layer>) {
+fn save_structure(zip: &mut ZipWriter<File>, project: &BrushProject) -> ZipResult<()> {
+    if let Ok(structure) = serde_json::to_string(project) {
+        let options = SimpleFileOptions::default()
+            .compression_method(zip::CompressionMethod::Stored)
+            .unix_permissions(0o666);
+
+        zip.start_file("meta.json", options)?;
+        zip.write_all(structure.as_bytes())?;
+    }
+
+    Ok(())
+}
+
+fn save_preview(zip: &mut ZipWriter<File>, project: &BrushProject, data: &[u8]) -> ZipResult<()> {
+
+    let mut png = Cursor::new(Vec::new());
+
+    let result = image::write_buffer_with_format(
+        &mut png,
+        &data,
+        project.width,
+        project.height,
+        image::ColorType::Rgba8,
+        image::ImageFormat::Png,
+    );
+
+    match result {
+        Ok(_) => {
+            let options = SimpleFileOptions::default()
+                .compression_method(zip::CompressionMethod::Stored)
+                .unix_permissions(0o666);
+
+            zip.start_file("preview.png", options)?;
+            zip.write_all(&png.into_inner())?;
+        }
+        Err(e) => {
+            eprintln!("{}", e);
+            return Err(ZipError::FileNotFound);
+        }
+    }
+
+    Ok(())
+}
+
+fn save_layers(zip: &mut ZipWriter<File>, layers: &Vec<Layer>) -> ZipResult<()> {
     for layer in layers {
         match layer {
             // Save children if it's a group
             Layer::Group(_) => {
                 if let Some(children) = layer.children() {
-                    save_layers(children);
+                    save_layers(zip, children)?;
                 }
             }
             // Save data if it's a pixel layer
             Layer::Pixel(_) => {
                 if let Some(data) = layer.pixel_data() {
-                    save_pixel_data(layer.id(), data);
+                    save_pixel_data(zip, layer.id(), data)?;
                 }
             }
             // Do nothing if it's a data only layer
             _ => {}
         }
     }
+    Ok(())
 }
 
-#[allow(dead_code)]
-fn save_pixel_data(_id: Uuid, _pixels: &Vec<f32>) {
-    todo!();
+fn save_pixel_data(
+    zip: &mut ZipWriter<File>,
+    id: Uuid,
+    pixels: &Vec<f32>,
+) -> zip::result::ZipResult<()> {
+    let options = SimpleFileOptions::default()
+        .compression_method(zip::CompressionMethod::Stored)
+        .unix_permissions(0o666);
+
+    let file = format!("layers/{}", id.to_string());
+
+    zip.start_file(&file, options)?;
+    zip.write_all(bytemuck::cast_slice(pixels))?;
+
+    Ok(())
+}
+
+fn prepare_zip(path: &Path) -> zip::result::ZipResult<ZipWriter<File>> {
+    // Validate that the provided filename does not escape the current directory
+    if path.is_absolute()
+        || path
+            .components()
+            .any(|c| matches!(c, std::path::Component::ParentDir))
+    {
+        // Return an error instead of writing to an arbitrary location
+        return Err(ZipError::InvalidArchive(
+            "Unsafe output path: Attempted directory traversal or absolute path".into(),
+        ));
+    }
+    // Create the file relative to the current working directory
+    let base = std::env::current_dir().map_err(|_| {
+        zip::result::ZipError::Io(std::io::Error::new(
+            ErrorKind::NotFound,
+            "Failed to get current directory",
+        ))
+    })?;
+    let safe_path = base.join(path);
+
+    let file = std::fs::File::create(safe_path)?;
+
+    let mut zip = zip::ZipWriter::new(file);
+
+    // Prepare folders and metadata
+    zip.add_directory("layers/", SimpleFileOptions::default())?;
+    zip.add_directory("refs/", SimpleFileOptions::default())?;
+
+    let options = SimpleFileOptions::default()
+        .compression_method(zip::CompressionMethod::Stored)
+        .unix_permissions(0o444);
+
+    zip.start_file("mimetype", options)?;
+    zip.write_all(b"application/x-brush\n")?;
+
+    Ok(zip)
 }

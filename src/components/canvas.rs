@@ -25,12 +25,14 @@ use gtk::{
     glib::{self, VariantTy, WeakRef, clone},
 };
 use libloading::Library;
+use zip::result::ZipError;
 
 use std::{
     cell::{Cell, OnceCell, RefCell},
     collections::HashMap,
     f32::consts::PI,
     ops::{Deref, Sub},
+    path::Path,
     rc::Rc,
 };
 use uuid::Uuid;
@@ -48,7 +50,7 @@ use crate::{
             tools::BrushTool,
         },
     },
-    data::{blend_modes::BrushBlendMode, layer::Layer, project::BrushProject},
+    data::{blend_modes::BrushBlendMode, file::save_project, layer::Layer, project::BrushProject},
 };
 use strum::IntoEnumIterator;
 
@@ -719,6 +721,90 @@ impl BrushCanvas {
         imp.canvas.queue_draw();
     }
 
+    fn save_project(&self, project: BrushProject) {
+        let imp = self.imp();
+
+        if let Some(loc) = imp.file_location.borrow().as_deref() {
+            // File string set
+            let path = Path::new(&loc);
+            if path.exists() {
+                // File exists, proceed to write
+                println!("Overwriting file");
+                if let Some(pixels) =
+                    self.get_composite(project.width as i32, project.height as i32)
+                {
+                    let result = save_project(path, &project, &pixels);
+                    self.save_feedback(result);
+                } else {
+                    self.save_feedback(Err(ZipError::FileNotFound));
+                }
+            } else {
+                // File was deleted, prompt user
+                println!("File missing, reprompting");
+                self.save_project_as(project, true);
+            }
+        } else {
+            // Location not set, prompt user
+            println!("File not saved yet, prompting");
+            self.save_project_as(project, true);
+        }
+    }
+
+    fn save_project_as(&self, project: BrushProject, swap_to: bool) {
+        let imp = self.imp();
+
+        let path = self.prompt_save();
+        if swap_to && let Some(loc) = path.to_str() {
+            imp.file_location.replace(Some(loc.to_string()));
+        }
+
+        if let Some(pixels) = self.get_composite(project.width as i32, project.height as i32) {
+            let result = save_project(path, &project, &pixels);
+            self.save_feedback(result);
+        } else {
+            self.save_feedback(Err(ZipError::FileNotFound));
+        }
+    }
+
+    fn get_composite(&self, width: i32, height: i32) -> Option<Vec<u8>> {
+        let imp = self.imp();
+
+        if let Some(root) = imp.gl_root_fbo.get()
+            && let Some(gl) = imp.gl_context.get()
+            && let Some(shader_manager) = imp.gl_shader_manager.get()
+        {
+            unsafe {
+                return capture_oklab_to_srgb_png(
+                    gl,
+                    root.texture,
+                    width,
+                    height,
+                    &mut shader_manager.borrow_mut(),
+                );
+            }
+        }
+        None
+    }
+
+    // Create and show a popup in the toast overlay via action
+    // If OK, it should be a simple confirmation
+    // If Err, it should be a toast with a simple error and a button to copy the error output
+    fn save_feedback(&self, result: Result<(), ZipError>) {
+        match result {
+            // TODO: The actual toasts
+            Ok(_) => {}
+            Err(e) => {
+                eprintln!("{e}");
+            }
+        }
+    }
+
+    fn prompt_save(&self) -> &Path {
+        // TODO: Prompt with ashpd file picker portal
+        let path = Path::new("tst.bsh");
+        path
+    }
+
     // Viewport control
     fn zoom_by(&self, factor: f32) {
         let new_zoom = (self.imp().zoom.get() + factor).clamp(0.1, 10f32);
@@ -1171,6 +1257,119 @@ fn interpolate_stroke(
     points
 }
 
+unsafe fn capture_oklab_to_srgb_png(
+    gl: &glow::Context,
+    root_fbo_texture: glow::Texture,
+    width: i32,
+    height: i32,
+    shader_manager: &mut ShaderManager, // Adjust based on your actual struct name
+) -> Option<Vec<u8>> {
+    unsafe {
+        use glow::HasContext;
+
+        let read_fbo = gl.create_framebuffer().ok()?;
+        let read_tex = gl.create_texture().ok()?;
+
+        gl.bind_texture(glow::TEXTURE_2D, Some(read_tex));
+        gl.tex_parameter_i32(
+            glow::TEXTURE_2D,
+            glow::TEXTURE_MIN_FILTER,
+            glow::LINEAR as i32,
+        );
+        gl.tex_parameter_i32(
+            glow::TEXTURE_2D,
+            glow::TEXTURE_MAG_FILTER,
+            glow::LINEAR as i32,
+        );
+        gl.tex_image_2d(
+            glow::TEXTURE_2D,
+            0,
+            glow::RGBA8 as i32,
+            width,
+            height,
+            0,
+            glow::RGBA,
+            glow::UNSIGNED_BYTE,
+            glow::PixelUnpackData::Slice(None),
+        );
+
+        gl.bind_framebuffer(glow::FRAMEBUFFER, Some(read_fbo));
+        gl.framebuffer_texture_2d(
+            glow::FRAMEBUFFER,
+            glow::COLOR_ATTACHMENT0,
+            glow::TEXTURE_2D,
+            Some(read_tex),
+            0,
+        );
+
+        gl.viewport(0, 0, width, height);
+
+        shader_manager.oklab2srgb.bind(gl);
+
+        // Identity Matrix
+        let identity: [f32; 16] = [
+            1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+        ];
+        if let Some(loc) = shader_manager.oklab2srgb.get_uniform(gl, "u_mvp") {
+            gl.uniform_matrix_4_f32_slice(Some(&loc), false, &identity);
+        }
+
+        // Already flipped in render, no need to flip again
+        if let Some(loc) = shader_manager.oklab2srgb.get_uniform(gl, "u_flip_y") {
+            gl.uniform_1_f32(Some(&loc), 0.0);
+        }
+
+        gl.active_texture(glow::TEXTURE0);
+        gl.bind_texture(glow::TEXTURE_2D, Some(root_fbo_texture));
+
+        let vao = gl.create_vertex_array().ok()?;
+        let vbo = gl.create_buffer().ok()?;
+        gl.bind_vertex_array(Some(vao));
+        gl.bind_buffer(glow::ARRAY_BUFFER, Some(vbo));
+
+        // Full screen quad
+        let vertices: [f32; 24] = [
+            -1.0, -1.0, 0.0, 0.0, 1.0, -1.0, 1.0, 0.0, -1.0, 1.0, 0.0, 1.0, -1.0, 1.0, 0.0, 1.0,
+            1.0, -1.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0,
+        ];
+        gl.buffer_data_u8_slice(
+            glow::ARRAY_BUFFER,
+            bytemuck::cast_slice(&vertices),
+            glow::STATIC_DRAW,
+        );
+
+        gl.enable_vertex_attrib_array(0);
+        gl.vertex_attrib_pointer_f32(0, 2, glow::FLOAT, false, 16, 0);
+        gl.enable_vertex_attrib_array(1);
+        gl.vertex_attrib_pointer_f32(1, 2, glow::FLOAT, false, 16, 8);
+
+        gl.draw_arrays(glow::TRIANGLES, 0, 6);
+        gl.finish();
+
+        let mut pixels = vec![0u8; (width * height * 4) as usize];
+        gl.pixel_store_i32(glow::PACK_ALIGNMENT, 1);
+        gl.read_pixels(
+            0,
+            0,
+            width,
+            height,
+            glow::RGBA,
+            glow::UNSIGNED_BYTE,
+            glow::PixelPackData::Slice(Some(&mut pixels)),
+        );
+
+        // 8. Cleanup
+        gl.bind_framebuffer(glow::FRAMEBUFFER, None);
+        gl.bind_vertex_array(None);
+        gl.delete_vertex_array(vao);
+        gl.delete_buffer(vbo);
+        gl.delete_framebuffer(read_fbo);
+        gl.delete_texture(read_tex);
+
+        Some(pixels)
+    }
+}
+
 #[derive(strum::Display, strum::EnumIter, strum::AsRefStr)]
 pub enum CanvasAction {
     // Layer management
@@ -1182,10 +1381,17 @@ pub enum CanvasAction {
     RenameLayer,
     #[strum(to_string = "canvas.delete-layer")]
     DeleteLayer,
-    #[strum(to_string = "move.move-layer-up")]
+    #[strum(to_string = "canvas.move-layer-up")]
     MoveLayerUp,
-    #[strum(to_string = "move.move-layer-down")]
+    #[strum(to_string = "canvas.move-layer-down")]
     MoveLayerDown,
+    // Project management
+    #[strum(to_string = "canvas.save")]
+    SaveProject,
+    #[strum(to_string = "canvas.save-as")]
+    SaveProjectAs,
+    #[strum(to_string = "canvas.export-as")]
+    ExportProjectAs,
     // Viewport navigation
     #[strum(to_string = "canvas.zoom-in")]
     ZoomIn,
@@ -1274,6 +1480,28 @@ impl CanvasAction {
                         c.move_layer_down();
                     });
                 }
+                // Project handling
+                CanvasAction::SaveProject => {
+                    klass.install_action(&action, None, |c, _, _| {
+                        let project = c.imp().project.borrow().clone();
+                        c.save_project(project);
+                    });
+
+                    klass.add_binding_action(gdk::Key::S, gdk::ModifierType::CONTROL_MASK, &action);
+                }
+                CanvasAction::SaveProjectAs => {
+                    klass.install_action(&action, None, |c, _, _| {
+                        let project = c.imp().project.borrow().clone();
+                        c.save_project_as(project, true);
+                    });
+
+                    klass.add_binding_action(
+                        gdk::Key::S,
+                        gdk::ModifierType::SHIFT_MASK.intersection(gdk::ModifierType::CONTROL_MASK),
+                        &action,
+                    );
+                }
+                CanvasAction::ExportProjectAs => {}
                 // Viewport control
                 CanvasAction::ZoomIn => {
                     klass.install_action(&action, None, |c, _, _| {

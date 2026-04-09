@@ -26,11 +26,13 @@ use crate::components::utils::renderer::shader::ShaderProgram;
 const VERT: &str = include_str!("./glsl/vert.glsl");
 const PIXEL_FRAG: &str = include_str!("./glsl/pixel.glsl");
 const BG_FRAG: &str = include_str!("./glsl/checkerboard.glsl");
+const OKLAB_TO_SRG: &str = include_str!("./glsl/oklab2srgb.glsl");
 
 #[derive(Debug, Iterable)]
 pub struct ShaderManager {
     pub background: ShaderProgram,
     pub layer: ShaderProgram,
+    pub oklab2srgb: ShaderProgram
 }
 
 impl ShaderManager {
@@ -39,6 +41,7 @@ impl ShaderManager {
             Self {
                 background: ShaderProgram::new(gl, VERT, BG_FRAG),
                 layer: ShaderProgram::new(gl, VERT, PIXEL_FRAG),
+                oklab2srgb: ShaderProgram::new(gl, VERT, OKLAB_TO_SRG),
             }
         }
     }

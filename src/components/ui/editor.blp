@@ -40,7 +40,7 @@ template $BrushEditor: Box {
 
             Button open_document {
               icon-name: "folder-open-symbolic";
-              action-name: "win.open-document";
+              action-name: "win.open";
               can-focus: false;
 
               accessibility {
@@ -50,7 +50,7 @@ template $BrushEditor: Box {
 
             Button save_document {
               icon-name: "floppy-symbolic";
-              action-name: "editor.save-document";
+              action-name: "editor.save";
               can-focus: false;
 
               accessibility {
@@ -493,6 +493,20 @@ template $BrushEditor: Box {
 }
 
 menu primary_menu {
+section {
+    item {
+      label: _("Save");
+      action: "editor.save";
+    }
+    item {
+      label: _("Save As");
+      action: "editor.save-as";
+    }
+    item {
+      label: _("Export As");
+      action: "editor.export-as";
+    }
+}
   section {
     item {
       label: _("_Preferences");

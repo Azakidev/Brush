@@ -521,6 +521,13 @@ pub enum EditorAction {
     SetTool,
     #[strum(to_string = "editor.toggle-erase")]
     ToggleErase,
+    // Project management
+    #[strum(to_string = "editor.save")]
+    SaveProject,
+    #[strum(to_string = "editor.save-as")]
+    SaveProjectAs,
+    #[strum(to_string = "editor.export-as")]
+    ExportProjectAs,
     // Layer handling
     #[strum(to_string = "editor.new-pixel")]
     NewPixel,
@@ -702,6 +709,28 @@ impl EditorAction {
                         gdk::ModifierType::NO_MODIFIER_MASK,
                         &action,
                     );
+                }
+                // Project handling
+                Self::SaveProject => {
+                    klass.install_action(&action, None, |e, _, _| {
+                        if let Some(tab) = e.current_page() {
+                            let _ = tab.activate_action(&CanvasAction::SaveProject, None);
+                        }
+                    });
+                }
+                Self::SaveProjectAs => {
+                    klass.install_action(&action, None, |e, _, _| {
+                        if let Some(tab) = e.current_page() {
+                            let _ = tab.activate_action(&CanvasAction::SaveProjectAs, None);
+                        }
+                    });
+                }
+                Self::ExportProjectAs => {
+                    klass.install_action(&action, None, |e, _, _| {
+                        if let Some(tab) = e.current_page() {
+                            let _ = tab.activate_action(&CanvasAction::ExportProjectAs, None);
+                        }
+                    });
                 }
                 // Layer handling
                 Self::NewPixel => {

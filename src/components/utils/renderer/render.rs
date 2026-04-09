@@ -341,7 +341,6 @@ pub unsafe fn composite_buffer(
         if let Some(loc) = shaders.layer.get_uniform(gl, "u_mvp") {
             gl.uniform_matrix_4_f32_slice(Some(&loc), false, &final_mvp.to_cols_array());
         }
-
         if let Some(loc) = shaders.layer.get_uniform(gl, "u_opacity") {
             gl.uniform_1_f32(Some(&loc), layer.opacity());
         }
@@ -393,9 +392,8 @@ pub unsafe fn composite_root_buffer(
         if let Some(loc) = shaders.layer.get_uniform(gl, "u_mvp") {
             gl.uniform_matrix_4_f32_slice(Some(&loc), false, &final_mvp.to_cols_array());
         }
-
         if let Some(loc) = shaders.layer.get_uniform(gl, "u_opacity") {
-            gl.uniform_1_f32(Some(&loc), 1.0);
+            gl.uniform_1_f32(Some(&loc), 1.0); // Root buffer should always be opaque
         }
         if let Some(loc) = shaders.layer.get_uniform(gl, "u_flip_y") {
             gl.uniform_1_f32(Some(&loc), 0.0); // Static textures usually don't need flipping
