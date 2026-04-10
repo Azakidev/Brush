@@ -20,23 +20,32 @@
 
 use std::{
     fs::File,
-    io::{Cursor, ErrorKind, Write},
+    io::{Cursor, ErrorKind, Read, Write},
     path::{Path, PathBuf},
 };
 
-use ashpd::{
-    Uri,
-    desktop::file_chooser::{FileFilter, SelectedFiles},
-};
+use ashpd::desktop::file_chooser::{FileFilter, SelectedFiles};
 use url::Url;
 use uuid::Uuid;
 use zip::{
-    ZipWriter,
+    ZipArchive, ZipWriter,
     result::{ZipError, ZipResult},
     write::SimpleFileOptions,
 };
 
+const LAYER_FOLDER: &str = "layers";
+const REFS_FOLDER: &str = "refs";
+
 use crate::data::{layer::Layer, layer_types::refs::RefLayer, project::BrushProject};
+
+pub fn open_project(path: &Path) -> ZipResult<BrushProject> {
+    let mut zip = open_zip(path)?;
+    // Read and deserialize the structure
+    let mut project = open_structure(&mut zip)?;
+    // Load up the pixel layers
+    open_layers(&mut zip, &mut project.layers)?;
+    Ok(project)
+}
 
 pub fn save_project(path: &Path, project: &BrushProject, preview: &[u8]) -> ZipResult<()> {
     let mut zip = prepare_zip(path)?;
@@ -54,6 +63,27 @@ pub fn save_project(path: &Path, project: &BrushProject, preview: &[u8]) -> ZipR
     // Commit the file
     zip.finish()?;
     Ok(())
+}
+
+fn open_structure(zip: &mut ZipArchive<File>) -> ZipResult<BrushProject> {
+    let mut structure_file = match zip.by_name("meta.json") {
+        Ok(f) => f,
+        Err(e) => {
+            return Err(e.into());
+        }
+    };
+
+    let mut project = String::new();
+    structure_file.read_to_string(&mut project).unwrap();
+    let project = match serde_json::from_str::<BrushProject>(&project) {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("{}", e);
+            return Err(ZipError::FileNotFound);
+        }
+    };
+
+    Ok(project)
 }
 
 fn save_structure(zip: &mut ZipWriter<File>, project: &BrushProject) -> ZipResult<()> {
@@ -99,6 +129,29 @@ fn save_preview(zip: &mut ZipWriter<File>, project: &BrushProject, data: &[u8]) 
     Ok(())
 }
 
+fn open_layers(zip: &mut ZipArchive<File>, layers: &mut Vec<Layer>) -> ZipResult<()> {
+    for layer in layers {
+        match layer {
+            Layer::Group(_) => {
+                layer.set_dirty(true);
+                if let Some(children) = layer.children_mut() {
+                    if let Err(e) = open_layers(zip, children) {
+                        return Err(e);
+                    }
+                }
+            }
+            Layer::Pixel(_) => {
+                let id = layer.id();
+                let new_data = open_pixel_data(zip, LAYER_FOLDER, id)?;
+                layer.replace_pixel_data(&new_data);
+            }
+            _ => {} // NO OP on data only layers
+        }
+    }
+
+    Ok(())
+}
+
 fn save_layers(zip: &mut ZipWriter<File>, layers: &Vec<Layer>) -> ZipResult<()> {
     for layer in layers {
         match layer {
@@ -111,7 +164,7 @@ fn save_layers(zip: &mut ZipWriter<File>, layers: &Vec<Layer>) -> ZipResult<()> 
             // Save data if it's a pixel layer
             Layer::Pixel(_) => {
                 if let Some(data) = layer.pixel_data() {
-                    save_pixel_data(zip, "layers", layer.id(), data)?;
+                    save_pixel_data(zip, LAYER_FOLDER, layer.id(), data)?;
                 }
             }
             // Do nothing if it's a data only layer
@@ -123,9 +176,31 @@ fn save_layers(zip: &mut ZipWriter<File>, layers: &Vec<Layer>) -> ZipResult<()> 
 
 fn save_refs(zip: &mut ZipWriter<File>, refs: &Vec<RefLayer>) -> ZipResult<()> {
     for ref_layer in refs {
-        save_pixel_data(zip, "refs", ref_layer.id(), ref_layer.pixel_data())?;
+        save_pixel_data(zip, REFS_FOLDER, ref_layer.id(), ref_layer.pixel_data())?;
     }
     Ok(())
+}
+
+fn open_pixel_data(
+    zip: &mut ZipArchive<File>,
+    destination: &str,
+    id: Uuid,
+) -> ZipResult<Vec<f32>> {
+    let loc = format!("{}/{}", destination, id);
+
+    let mut file = match zip.by_name(&loc) {
+        Ok(f) => f,
+        Err(e) => {
+            return Err(e.into());
+        }
+    };
+
+    let mut buf: Vec<u8> = Vec::with_capacity(file.size() as usize);
+    file.read_to_end(&mut buf)?;
+
+    let pixels: Vec<f32> = bytemuck::pod_collect_to_vec(&buf);
+    
+    Ok(pixels.to_vec())
 }
 
 fn save_pixel_data(
@@ -138,12 +213,27 @@ fn save_pixel_data(
         .compression_method(zip::CompressionMethod::DEFLATE)
         .unix_permissions(0o444);
 
-    let file = format!("{destination}/{}", id);
+    let file = format!("{}/{}", destination, id);
 
     zip.start_file(&file, options)?;
     zip.write_all(bytemuck::cast_slice(pixels))?;
 
     Ok(())
+}
+
+fn open_zip(path: &Path) -> zip::result::ZipResult<ZipArchive<File>> {
+    // Create the file relative to the current working directory
+    let base = std::env::current_dir().map_err(|_| {
+        zip::result::ZipError::Io(std::io::Error::new(
+            ErrorKind::NotFound,
+            "Failed to get current directory",
+        ))
+    })?;
+    let safe_path = base.join(path);
+
+    std::fs::File::open(safe_path)
+        .map_err(ZipError::from)
+        .and_then(ZipArchive::new)
 }
 
 fn prepare_zip(path: &Path) -> zip::result::ZipResult<ZipWriter<File>> {
@@ -170,19 +260,36 @@ fn prepare_zip(path: &Path) -> zip::result::ZipResult<ZipWriter<File>> {
     Ok(zip)
 }
 
-pub async fn request_open() -> ashpd::Result<Vec<Uri>> {
+pub async fn request_open() -> ashpd::Result<Vec<PathBuf>> {
     let files = SelectedFiles::open_file()
         .title("Open a project") // TODO:  i18n
         .accept_label("Open") // TODO: i18n
         .modal(true)
         .multiple(false)
-        .filter(FileFilter::new("Brush Project").mimetype("application/x-brush")) // TODO: i18n
+        .filter(
+            FileFilter::new("Brush Project")
+                .mimetype("application/x-brush")
+                .glob("*.bsh"),
+        ) // TODO: i18n
         .filter(FileFilter::new("Any file").mimetype("application/octet-stream")) // TODO: i18n
         .send()
         .await?
         .response()?;
 
-    Ok(files.uris().to_vec())
+    let paths: Vec<PathBuf> = files
+        .uris()
+        .iter()
+        .map(|uri| Url::parse(uri.as_str()).unwrap())
+        .filter_map(|url| {
+            return if url.scheme() == "file" {
+                Some(url.to_file_path().unwrap())
+            } else {
+                None
+            };
+        })
+        .collect();
+
+    Ok(paths)
 }
 
 pub async fn request_save() -> ashpd::Result<PathBuf> {
@@ -201,5 +308,7 @@ pub async fn request_save() -> ashpd::Result<PathBuf> {
     if url.scheme() == "file" {
         return Ok(url.to_file_path().unwrap());
     }
-    Err(ashpd::Error::Portal(ashpd::PortalError::NotFound("Uri is not a file".to_owned())))
+    Err(ashpd::Error::Portal(ashpd::PortalError::NotFound(
+        "Uri is not a file".to_owned(),
+    )))
 }

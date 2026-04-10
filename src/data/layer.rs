@@ -268,6 +268,19 @@ impl Layer {
         None
     }
 
+    pub fn replace_pixel_data(&mut self, new_pixels: &[f32]) {
+        if let Layer::Pixel(inner) = self {
+            let size = (inner.data.width * inner.data.height * 4) as usize;
+            if new_pixels.len() == size {
+                inner.data.pixels.resize(size, 0f32);
+                inner.data.pixels.copy_from_slice(new_pixels);
+                self.set_dirty(true);
+            } else {
+                eprintln!("Pixel data sizes are different!");
+            }
+        }
+    }
+
     pub fn children(&self) -> Option<&Vec<Layer>> {
         if let Layer::Group(inner) = self {
             return Some(&inner.data.layers);
@@ -451,7 +464,6 @@ fn should_edit_pixel(mask: &mut [u8], x: i32, y: i32, width: i32) -> bool {
     }
 }
 
-#[allow(dead_code)]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct BrushLayer<T, D>
 where
@@ -466,11 +478,10 @@ where
     pub data: D,
 
     // Flags
-    #[serde(skip_serializing)]
+    #[serde(skip_serializing, skip_deserializing)]
     is_dirty: bool,
 }
 
-#[allow(dead_code)]
 impl<T, D> BrushLayer<T, D>
 where
     T: LayerParameter,

@@ -39,6 +39,7 @@ use uuid::Uuid;
 
 use crate::{
     components::{
+        editor::EditorAction,
         layer_item::BrushLayerItem,
         utils::{
             editor_state::BrushEditorState,
@@ -60,6 +61,8 @@ use crate::{
 use strum::IntoEnumIterator;
 
 mod imp {
+
+    use std::time::Duration;
 
     use super::*;
 
@@ -116,6 +119,7 @@ mod imp {
 
             CanvasAction::init_actions(klass);
 
+            // Debug actions
             klass.install_action("canvas.print-state", None, move |canvas, _, _| {
                 println!(
                     "Contents: {}",
@@ -232,6 +236,18 @@ mod imp {
                     };
                 });
             }
+
+            obj.connect_realize(|c| {
+                gtk::glib::spawn_future_local(clone!(
+                    #[weak]
+                    c,
+                    async move {
+                        gtk::glib::timeout_future(Duration::from_millis(20)).await;
+                        c.imp().canvas.queue_draw();
+                        c.zoom_to_fit();
+                    }
+                ));
+            });
         }
     }
     impl WidgetImpl for BrushCanvas {}
@@ -251,6 +267,26 @@ impl BrushCanvas {
             .editor_state
             .set(editor_state)
             .expect("Editor state already set");
+        obj
+    }
+
+    pub fn from_project(
+        editor_state: Rc<RefCell<BrushEditorState>>,
+        project: BrushProject,
+        loc: &str,
+    ) -> Self {
+        let obj: Self = glib::Object::new();
+        // Project setup
+        let first_id = project.layers.first().map_or(None, |l| Some(l.id()));
+        obj.imp().project.replace(project);
+        obj.imp().file_location.replace(Some(loc.to_string()));
+        obj.imp().active_layer.replace(first_id);
+        // Editor state
+        obj.imp()
+            .editor_state
+            .set(editor_state)
+            .expect("Editor state already set");
+
         obj
     }
 
@@ -754,9 +790,14 @@ impl BrushCanvas {
             async move {
                 if let Ok(file) = request_save().await {
                     if swap_to {
-                        obj.imp()
-                            .file_location
-                            .replace(Some(file.as_path().to_str().unwrap().to_owned()));
+                        let path = file.as_path().to_str().unwrap().to_owned();
+                        let new_name = file.as_path().file_name().unwrap().to_str().unwrap();
+
+                        let _ = obj.activate_action(
+                            &EditorAction::RenameTab,
+                            Some(&new_name.to_variant()),
+                        );
+                        obj.imp().file_location.replace(Some(path));
                     }
                     obj.save_project(project);
                 }
@@ -840,9 +881,6 @@ impl BrushCanvas {
             imp.project.borrow().height as f32,
         );
         let (viewport_width, viewport_height) = (self.width() as f32, self.height() as f32);
-
-        println!("Canvas size: {}, {}", canvas_width, canvas_height);
-        println!("Viewport size: {}, {}", viewport_width, viewport_height);
 
         let scale_x = viewport_width / canvas_width;
         let scale_y = viewport_height / canvas_height;
@@ -1430,7 +1468,6 @@ impl Deref for CanvasAction {
 }
 
 impl CanvasAction {
-    // TODO: Setup accels here as well like in the editor
     fn init_actions(klass: &mut <imp::BrushCanvas as ObjectSubclass>::Class) {
         for action in Self::iter() {
             match action {

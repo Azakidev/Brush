@@ -11,4 +11,4 @@ MimeType=@MIME_TYPES@
 
 StartupNotify=true
 StartupWMClass=@BIN_NAME@
-DBusActivatable=true
+DBusActivatable=false

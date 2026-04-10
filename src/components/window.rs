@@ -106,10 +106,9 @@ impl BrushWindow {
     fn should_open_editor(&self, page_count: i32) {
         let stack = &self.imp().view_stack;
         let editor = self.imp().editor.imp();
-        let overview = &editor.tab_overview;
 
         if page_count > 0 && stack.visible_child_name().unwrap().as_str() != "editor" {
-            overview.set_open(false);
+            editor.tab_overview.set_open(false);
             editor.obj().set_property("show_editor", true.to_value());
             editor.obj().set_property("show_toolbox", true.to_value());
             stack.set_visible_child_name("editor");
@@ -129,8 +128,9 @@ impl BrushWindow {
             self,
             async move {
                 if let Ok(files) = request_open().await {
-                    let file = files[0].as_str();
-                    obj.open_file(file);
+                    let file = files.first().unwrap();
+                    let path = file.to_str().unwrap();
+                    obj.open_file(path);
                 }
             }
         ));

@@ -48,13 +48,13 @@ mod imp {
     }
 
     impl ApplicationImpl for BrushApplication {
-        // We connect to the activate callback to create a window when the application
-        // has been launched. Additionally, this callback notifies us when the user
-        // tries to launch a "second instance" of the application. When they try
-        // to do that, we'll just present any existing window.
+        fn startup(&self) {
+            self.parent_startup();
+        }
+
         fn activate(&self) {
             let application = self.obj();
-            // Get the current window or create one if necessary
+
             let window = application.active_window().unwrap_or_else(|| {
                 let window = BrushWindow::new(&*application);
                 window.upcast()
@@ -62,7 +62,6 @@ mod imp {
 
             application.setup_icons();
 
-            // Ask the window manager/compositor to present the window
             window.present();
         }
 
@@ -97,10 +96,10 @@ glib::wrapper! {
 }
 
 impl BrushApplication {
-    pub fn new(application_id: &str, flags: &gio::ApplicationFlags) -> Self {
+    pub fn new(application_id: &str) -> Self {
         glib::Object::builder()
             .property("application-id", application_id)
-            .property("flags", flags)
+            .property("flags", gio::ApplicationFlags::HANDLES_OPEN)
             .property("resource-base-path", "/art/FatDawlf/Brush")
             .build()
     }

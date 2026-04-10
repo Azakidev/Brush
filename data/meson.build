@@ -3,6 +3,7 @@ mime_types = ['application/x-brush']
 conf = configuration_data()
 conf.set('APP_ID', app_id)
 conf.set('BIN_NAME', bin_name)
+conf.set('BINDIR', get_option('prefix') / get_option('bindir'))
 conf.set('SUFFIX', get_option('app_id_suffix'))
 conf.set('MIME_TYPES', ';'.join(mime_types) + ';')
 
@@ -51,16 +52,10 @@ test(
   args: ['--strict', '--dry-run', meson.current_source_dir()],
 )
 
-service_conf = configuration_data()
-service_conf.set('bindir', get_option('prefix') / get_option('bindir'))
 configure_file(
-  input: configure_file(
-    input: 'art.FatDawlf.Brush.service.in.in',
-    output: '@0@.service.in'.format(app_id),
-    configuration: conf,
-  ),
+input: 'art.FatDawlf.Brush.service.in',
   output: '@0@.service'.format(app_id),
-  configuration: service_conf,
+  configuration: conf,
   install_dir: get_option('datadir') / 'dbus-1' / 'services',
 )
 

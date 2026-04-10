@@ -36,6 +36,7 @@ use std::{
     cell::{Cell, RefCell},
     collections::HashMap,
     ops::{Deref, Sub},
+    path::Path,
     rc::Rc,
     str::FromStr,
 };
@@ -52,7 +53,7 @@ use crate::{
         utils::{color::to_rgba, editor_state::BrushEditorState, tools::BrushTool},
         window::WindowActions,
     },
-    data::{blend_modes::BrushBlendMode, project::BrushProject},
+    data::{blend_modes::BrushBlendMode, file::open_project, project::BrushProject},
 };
 
 mod imp {
@@ -441,7 +442,7 @@ impl BrushEditor {
         self.update_controls();
     }
 
-    fn current_page(&self) -> Option<BrushCanvas> {
+    pub fn current_page(&self) -> Option<BrushCanvas> {
         if let Some(tab) = self.imp().tab_view.selected_page() {
             let child = tab.child();
             if let Ok(canvas_tab) = child.downcast::<BrushCanvas>() {
@@ -452,6 +453,12 @@ impl BrushEditor {
         None
     }
 
+    fn rename_tab(&self, new_name: &str) {
+        if let Some(tab) = self.imp().tab_view.selected_page() {
+            tab.set_title(new_name);
+        }
+    }
+
     /**
         This function should be responsible for prompting to the user
         to make a new project, choosing the size and template if so.
@@ -460,9 +467,9 @@ impl BrushEditor {
     */
     fn new_document(&self) -> adw::TabPage {
         let tab_view = &self.imp().tab_view;
-        let editor_content = BrushCanvas::new(self.imp().editor_state.clone());
+        let canvas = BrushCanvas::new(self.imp().editor_state.clone());
 
-        let tab_page = tab_view.append(&editor_content);
+        let tab_page = tab_view.append(&canvas);
         tab_page.set_live_thumbnail(true);
 
         if tab_view.n_pages() > 1 {
@@ -476,16 +483,31 @@ impl BrushEditor {
         tab_page
     }
 
-    fn open_document(&self, _path: &str) -> adw::TabPage {
+    fn open_document(&self, path: &Path) -> Option<adw::TabPage> {
         let tab_view = &self.imp().tab_view;
 
-        // TODO: File opening
-        let editor_content = BrushCanvas::new(self.imp().editor_state.clone());
+        match open_project(path) {
+            Ok(p) => {
+                let canvas = BrushCanvas::from_project(
+                    self.imp().editor_state.clone(),
+                    p,
+                    path.to_str().unwrap(),
+                );
 
-        let tab_page = tab_view.append(&editor_content);
-        tab_page.set_live_thumbnail(true);
+                let title = path.file_name().unwrap().to_str().unwrap();
 
-        tab_page
+                let tab_page = tab_view.append(&canvas);
+                tab_page.set_live_thumbnail(true);
+                tab_page.set_title(title);
+
+                return Some(tab_page);
+            }
+            Err(e) => {
+                eprintln!("{e}");
+            }
+        };
+
+        None
     }
 
     /**
@@ -499,11 +521,16 @@ impl BrushEditor {
         let tab_view = &self.imp().tab_view;
 
         let tab_page = match file {
-            Some(f) => self.open_document(f),
-            None => self.new_document(),
+            Some(f) => {
+                let path = Path::new(f);
+                self.open_document(path)
+            }
+            None => Some(self.new_document()),
         };
 
-        tab_view.set_selected_page(&tab_page);
+        if let Some(tab) = tab_page {
+            tab_view.set_selected_page(&tab);
+        }
     }
 
     pub fn release_focus(&self) {
@@ -520,6 +547,8 @@ pub enum EditorAction {
     // Document management
     #[strum(to_string = "editor.new-tab")]
     NewTab,
+    #[strum(to_string = "editor.rename-tab")]
+    RenameTab,
     #[strum(to_string = "editor.close-tab")]
     CloseTab,
     // Editor state changes
@@ -592,6 +621,15 @@ impl EditorAction {
                     klass.install_action(&action, None, |e, _, _| {
                         e.new_tab(None);
                         let _ = e.activate_action(&WindowActions::OpenEditor, None);
+                    });
+                }
+                Self::RenameTab => {
+                    klass.install_action(&action, Some(VariantTy::STRING), |e, _, arg| {
+                        if let Some(var) = arg {
+                            let value = var.to_string(); // 'Name'
+                            let name = value.get(1..value.len().sub(1)).unwrap(); // Remove quotes
+                            e.rename_tab(name);
+                        }
                     });
                 }
                 Self::CloseTab => {
@@ -729,7 +767,6 @@ impl EditorAction {
                     klass.install_action(&action, Some(VariantTy::STRING), |e, _, arg| {
                         if let Some(var) = arg {
                             let value = var.to_string(); // 'path'
-                            println!("{value}");
                             let path = value.get(1..value.len().sub(1)); // Remove quotes
                             e.new_tab(path);
                             let _ = e.activate_action(&WindowActions::OpenEditor, None);
