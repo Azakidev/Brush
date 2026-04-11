@@ -54,8 +54,8 @@ impl Default for BrushProject {
                 version: 1,
                 created: n.as_secs(),
 
-                width: 1920,
-                height: 1080,
+                width: 1920 * 2,
+                height: 1080 * 2,
 
                 layers: Vec::new(),
                 references: Vec::new(),

@@ -19,6 +19,7 @@
  */
 
 use color::{AlphaColor, Oklab};
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -30,6 +31,7 @@ use crate::data::{
         group::GroupData,
         pixel::PixelData,
     },
+    rect::Rect,
 };
 
 pub trait LayerParameter {
@@ -51,11 +53,8 @@ pub enum Layer {
 
 impl Layer {
     pub fn new_pixel(name: String, width: u32, height: u32) -> Self {
-        let mut pixels: Vec<f32> = Vec::new();
-        pixels.resize((width * height * 4) as usize, 0f32);
-
         let params = NodeLayerParameters::default();
-        let data = PixelData::new(pixels, "OkLab".to_owned(), width, height);
+        let data = PixelData::new("OkLab".to_owned(), width, height);
 
         Layer::Pixel(BrushLayer::new(name, params, data))
     }
@@ -254,6 +253,24 @@ impl Layer {
         }
     }
 
+    pub fn dirty_rect(&self) -> Option<Rect> {
+        match self {
+            Layer::Pixel(inner) => inner.dirty_rec,
+            Layer::Group(inner) => inner.dirty_rec,
+            Layer::Fill(inner) => inner.dirty_rec,
+            Layer::Filter(inner) => inner.dirty_rec,
+        }
+    }
+
+    pub fn set_dirty_rect(&mut self, rect: Option<Rect>) {
+        match self {
+            Layer::Pixel(inner) => inner.dirty_rec = rect,
+            Layer::Group(inner) => inner.dirty_rec = rect,
+            Layer::Fill(inner) => inner.dirty_rec = rect,
+            Layer::Filter(inner) => inner.dirty_rec = rect,
+        }
+    }
+
     pub fn pixel_data(&self) -> Option<&Vec<f32>> {
         if let Layer::Pixel(inner) = self {
             return Some(&inner.data.pixels);
@@ -368,49 +385,97 @@ impl Layer {
         erase_mode: bool,
         mask: &mut [u8],
     ) {
-        // Convert global canvas coordinates to layer-local coordinates
         let local_x = x - self.x();
         let local_y = y - self.y();
         let (width, height) = (self.width() as i32, self.height() as i32);
-
         let alpha_lock = self.alpha_lock();
+        let r2 = radius * radius;
 
-        for dy in -radius..radius {
-            for dx in -radius..radius {
-                if dx * dx + dy * dy <= radius * radius {
-                    let px = local_x + dx;
-                    let py = local_y + dy;
+        // Calculate the bounding box of the dab to limit the work area
+        let start_y = (local_y - radius).clamp(0, height);
+        let end_y = (local_y + radius).clamp(0, height);
 
-                    // Bounds check: only draw if inside this specific layer's dimensions
-                    if px >= 0 && px < width && py >= 0 && py < height {
-                        let idx = ((py * width + px) * 4) as usize;
+        if let Some(data) = self.pixel_data_mut() {
+            let row_stride = width as usize * 4;
+            let mask_stride = width as usize;
 
-                        if should_edit_pixel(mask, px, py, width)
-                            && let Some(data) = self.pixel_data_mut()
-                        {
-                            let mut orig_color = [0f32; 4];
-                            orig_color.copy_from_slice(&data[idx..idx + 4]);
-                            let orig_color: AlphaColor<Oklab> = AlphaColor::new(orig_color);
-                            if erase_mode {
-                                let alpha =
-                                    (orig_color.components[3] - color.components[3]).max(0f32);
-                                let final_color = orig_color.with_alpha(alpha);
+            // if radius < 500 {
+            // } else {
+            // }
+            let rect = data
+                .par_chunks_mut(row_stride)
+                .zip(mask.par_chunks_mut(mask_stride))
+                .enumerate() // gives us the current row index
+                .filter(|(py, _)| *py >= start_y as usize && *py < end_y as usize)
+                .fold(
+                    || None,
+                    |acc: Option<Rect>, (py, (row_data, row_mask))| {
+                        let mut local_acc = acc;
+                        let py = py as i32;
+                        let dy = py - local_y;
 
-                                data[idx..idx + 4].copy_from_slice(&final_color.components);
-                            } else {
-                                // TODO: Sample strength of brush from brush engine
-                                paint_pixel(
-                                    &mut data[idx..idx + 4],
-                                    color.components,
-                                    1f32,
-                                    alpha_lock,
-                                );
+                        for dx in -radius..radius {
+                            if dx * dx + dy * dy <= r2 {
+                                let px = local_x + dx;
+
+                                if px >= 0 && px < width {
+                                    let idx = (px * 4) as usize;
+                                    let mask_idx = px as usize;
+
+                                    if should_edit_pixel(row_mask, mask_idx) {
+                                        let mut orig_color_arr = [0f32; 4];
+                                        orig_color_arr.copy_from_slice(&row_data[idx..idx + 4]);
+                                        let orig_color: AlphaColor<Oklab> =
+                                            AlphaColor::new(orig_color_arr);
+
+                                        if erase_mode {
+                                            let alpha = (orig_color.components[3]
+                                                - color.components[3])
+                                                .max(0f32);
+                                            let final_color = orig_color.with_alpha(alpha);
+                                            row_data[idx..idx + 4]
+                                                .copy_from_slice(&final_color.components);
+                                        } else {
+                                            paint_pixel(
+                                                &mut row_data[idx..idx + 4],
+                                                color.components,
+                                                1f32,
+                                                alpha_lock,
+                                            );
+                                        }
+
+                                        let rect = Rect {
+                                            x: px,
+                                            y: py,
+                                            w: 1,
+                                            h: 1,
+                                        };
+                                        local_acc =
+                                            Some(local_acc.map_or(rect, |a| a.union(&rect)));
+                                    }
+                                }
                             }
                         }
-                    }
+                        local_acc
+                    },
+                )
+                .reduce(
+                    || None,
+                    |a, b| match (a, b) {
+                        (Some(r1), Some(r2)) => Some(r1.union(&r2)),
+                        (other, None) | (None, other) => other,
+                    },
+                );
+            println!("Rect: {:?}", rect);
+            if let Some(r_new) = rect {
+                if let Some(r_old) = self.dirty_rect() {
+                    self.set_dirty_rect(Some(r_new.union(&r_old)));
+                } else {
+                    self.set_dirty_rect(Some(r_new));
                 }
             }
         }
+
         self.set_dirty(true);
     }
 }
@@ -454,10 +519,9 @@ fn paint_pixel(canvas_rgba: &mut [f32], brush_rgba: [f32; 4], strength: f32, alp
     }
 }
 
-fn should_edit_pixel(mask: &mut [u8], x: i32, y: i32, width: i32) -> bool {
-    let idx = y * width + x;
-    if mask[idx as usize] == 0 {
-        mask[idx as usize] = 1; // Mark as touched
+fn should_edit_pixel(mask_row: &mut [u8], idx: usize) -> bool {
+    if mask_row[idx] == 0 {
+        mask_row[idx] = 1; // Mark as touched
         true
     } else {
         false
@@ -477,9 +541,11 @@ where
     pub parameters: T,
     pub data: D,
 
-    // Flags
+    // Transient info
     #[serde(skip_serializing, skip_deserializing)]
     is_dirty: bool,
+    #[serde(skip_serializing, skip_deserializing)]
+    dirty_rec: Option<Rect>,
 }
 
 impl<T, D> BrushLayer<T, D>
@@ -495,6 +561,7 @@ where
             parameters,
             data,
             is_dirty: true,
+            dirty_rec: None,
         }
     }
 

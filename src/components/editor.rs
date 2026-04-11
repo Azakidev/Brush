@@ -39,7 +39,7 @@ use std::{
     ops::{Deref, Sub},
     path::Path,
     rc::Rc,
-    str::FromStr,
+    str::FromStr, time::Instant,
 };
 use strum::IntoEnumIterator;
 use uuid::Uuid;
@@ -349,6 +349,7 @@ impl BrushEditor {
     }
 
     fn activate_layer(&self, id: Uuid) {
+        let s = Instant::now();
         let imp = self.imp();
         let project = imp.current_project.borrow();
         let layer_widget_cache = imp.layer_widget_cache.borrow();
@@ -374,6 +375,7 @@ impl BrushEditor {
         {
             widget.update(Some(id), new_layer)
         }
+        println!("Layer activated in {:?}", s.elapsed());
     }
 
     fn update_controls(&self) {
@@ -408,18 +410,26 @@ impl BrushEditor {
         let zoom = canvas.zoom();
         let rotation = canvas.rotation();
 
+        let s = Instant::now();
         if let Some(selected_layer) = canvas.selected_layer() {
             self.imp().current_layer.set(Some(selected_layer));
         }
+        println!("CL set in {:?}", s.elapsed());
 
-        self.imp().current_project.set(project.clone());
+        let s = Instant::now();
+        self.sync_layers_panel(&project, canvas);
+        println!("SLP in {:?}", s.elapsed());
+
+        let s = Instant::now();
+        self.imp().current_project.swap(&canvas_project);
+        println!("Project set in {:?}", s.elapsed());
 
         self.imp().current_zoom.set(zoom);
         self.imp().current_rotation.set(rotation);
-        self.sync_layers_panel(&project, canvas);
     }
 
     fn sync_layers_panel(&self, project: &BrushProject, canvas: &BrushCanvas) {
+        let s = Instant::now();
         let selected_layer = self.imp().current_layer.borrow();
         let layers_box = self.imp().layer_tree.get().imp().tree.get();
         let mut cache = canvas.imp().layer_widget_cache.borrow_mut();
@@ -441,6 +451,7 @@ impl BrushEditor {
 
         self.imp().layer_widget_cache.replace(cache.clone());
         self.update_controls();
+        println!("Layer widgets synced in {:?}", s.elapsed());
     }
 
     pub fn current_page(&self) -> Option<BrushCanvas> {

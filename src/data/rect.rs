@@ -1,4 +1,4 @@
-/* pixel.rs
+/* rect.rs
  *
  * Copyright 2026 FatDawlf
  *
@@ -18,39 +18,31 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-use serde::{Deserialize, Serialize};
-
-use crate::data::layer::LayerData;
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct PixelData {
-    #[serde(skip_serializing, skip_deserializing)]
-    pub pixels: Vec<f32>,
-    pub color_space: String, // TODO: Replace with enum
-
+#[derive(Debug, Clone, Copy)]
+pub struct Rect {
     pub x: i32,
     pub y: i32,
-    pub width: u32,
-    pub height: u32,
+    pub w: i32,
+    pub h: i32,
 }
 
-impl LayerData for PixelData {}
-
-impl PixelData {
-    pub fn new(color_space: String, width: u32, height: u32) -> Self {
-        Self {
-            pixels: vec![0f32; (width * height * 4) as usize],
-            color_space,
-
-            x: 0,
-            y: 0,
-            width,
-            height,
-        }
+impl Rect {
+    pub fn new(x: i32, y: i32, w: i32, h: i32) -> Self {
+        Self { x, y, w, h }
     }
 
-    pub fn resize(&mut self, width: u32, height: u32) {
-        let len = (width * height * 4) as usize;
-        self.pixels.resize(len, 0f32);
+    /// Combines two rectangles into one that covers both.
+    pub fn union(&self, other: &Self) -> Self {
+        let x1 = self.x.min(other.x);
+        let y1 = self.y.min(other.y);
+        let x2 = (self.x + self.w).max(other.x + other.w);
+        let y2 = (self.y + self.h).max(other.y + other.h);
+
+        Self {
+            x: x1,
+            y: y1,
+            w: x2 - x1,
+            h: y2 - y1,
+        }
     }
 }

@@ -24,3 +24,5 @@ pub mod project;
 pub mod blend_modes;
 pub mod layer;
 pub mod layer_types;
+
+pub mod rect;

@@ -182,9 +182,15 @@ unsafe fn render_layer_tree(
             Layer::Pixel(_) => {
                 let buffer = get_or_create_buffer(cache, gl, layer);
 
-                if layer.is_dirty() {
+                if layer.is_dirty()
+                    && let Some(rect) = layer.dirty_rect()
+                {
                     unsafe {
                         gl.bind_texture(glow::TEXTURE_2D, Some(buffer.texture));
+
+                        gl.pixel_store_i32(glow::UNPACK_ROW_LENGTH, layer.width() as i32);
+                        gl.pixel_store_i32(glow::UNPACK_SKIP_PIXELS, rect.x);
+                        gl.pixel_store_i32(glow::UNPACK_SKIP_ROWS, rect.y);
                     }
 
                     if let Some(colors) = layer.pixel_data() {
@@ -194,16 +200,23 @@ unsafe fn render_layer_tree(
                             gl.tex_sub_image_2d(
                                 glow::TEXTURE_2D,
                                 0,
-                                0,
-                                0,
-                                layer.width() as i32,
-                                layer.height() as i32,
+                                rect.x,
+                                rect.y,
+                                rect.w,
+                                rect.h,
                                 glow::RGBA,
                                 glow::FLOAT,
                                 glow::PixelUnpackData::Slice(Some(btyes)),
                             );
+
+                            gl.pixel_store_i32(glow::UNPACK_ROW_LENGTH, 0);
+                            gl.pixel_store_i32(glow::UNPACK_SKIP_PIXELS, 0);
+                            gl.pixel_store_i32(glow::UNPACK_SKIP_ROWS, 0);
                         }
-                        layer.set_dirty(false); // Reset the flag
+
+                        // Reset the dirty
+                        layer.set_dirty(false);
+                        layer.set_dirty_rect(None);
                     }
                 }
 
