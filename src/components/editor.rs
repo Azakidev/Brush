@@ -19,6 +19,7 @@
  */
 
 use adw::{
+    TabPage,
     prelude::{GtkWindowExt, RangeExt, ToggleButtonExt, WidgetExt},
     subclass::prelude::*,
 };
@@ -463,9 +464,9 @@ impl BrushEditor {
         This function should be responsible for prompting to the user
         to make a new project, choosing the size and template if so.
 
-        Then, it should generate the appropriate tab and return it.
+        Then, it should generate the appropriate tab and call new_tab on it.
     */
-    fn new_document(&self) -> adw::TabPage {
+    fn new_document(&self) {
         let tab_view = &self.imp().tab_view;
         let canvas = BrushCanvas::new(self.imp().editor_state.clone());
 
@@ -480,57 +481,50 @@ impl BrushEditor {
             tab_page.set_title(title.as_str());
         }
 
-        tab_page
+        self.new_tab(&tab_page);
     }
 
-    fn open_document(&self, path: &Path) -> Option<adw::TabPage> {
-        let tab_view = &self.imp().tab_view;
+    fn open_document(&self, loc: &str) {
+        let loc = loc.to_string();
 
-        match open_project(path) {
-            Ok(p) => {
-                let canvas = BrushCanvas::from_project(
-                    self.imp().editor_state.clone(),
-                    p,
-                    path.to_str().unwrap(),
-                );
+        glib::spawn_future_local(glib::clone!(
+            #[weak(rename_to = obj)]
+            self,
+            async move {
+                let tab_view = &obj.imp().tab_view;
+                let file_path = loc.clone();
 
-                let title = path.file_name().unwrap().to_str().unwrap();
+                let result = gtk::gio::spawn_blocking(move || open_project(Path::new(loc.as_str())))
+                    .await
+                    .expect("Failed to finish save");
+                match result {
+                    Ok(p) => {
+                        let canvas = BrushCanvas::from_project(
+                            obj.imp().editor_state.clone(),
+                            p,
+                            &file_path,
+                        );
 
-                let tab_page = tab_view.append(&canvas);
-                tab_page.set_live_thumbnail(true);
-                tab_page.set_title(title);
+                        let path = Path::new(file_path.as_str());
+                        let title = path.file_name().unwrap().to_str().unwrap();
 
-                return Some(tab_page);
+                        let tab_page = tab_view.append(&canvas);
+                        tab_page.set_live_thumbnail(true);
+                        tab_page.set_title(title);
+                        obj.new_tab(&tab_page);
+                    }
+                    Err(e) => {
+                        eprintln!("{e}");
+                    }
+                }
             }
-            Err(e) => {
-                eprintln!("{e}");
-            }
-        };
-
-        None
+        ));
     }
 
-    /**
-    This function should be responsible for creating and adding a new tab to the view.
-
-    If provided a file it should properly load it and create the corresponding tab.
-    Otherwise, it should prompt for a new document dialog
-    and properly generate a new project in memory to be saved by the user.
-    */
-    fn new_tab(&self, file: Option<&str>) {
+    fn new_tab(&self, tab: &TabPage) {
         let tab_view = &self.imp().tab_view;
-
-        let tab_page = match file {
-            Some(f) => {
-                let path = Path::new(f);
-                self.open_document(path)
-            }
-            None => Some(self.new_document()),
-        };
-
-        if let Some(tab) = tab_page {
-            tab_view.set_selected_page(&tab);
-        }
+        tab_view.set_selected_page(tab);
+        let _ = tab_view.activate_action(&WindowActions::OpenEditor, None);
     }
 
     pub fn release_focus(&self) {
@@ -619,8 +613,7 @@ impl EditorAction {
                 // Document management
                 Self::NewTab => {
                     klass.install_action(&action, None, |e, _, _| {
-                        e.new_tab(None);
-                        let _ = e.activate_action(&WindowActions::OpenEditor, None);
+                        e.new_document();
                     });
                 }
                 Self::RenameTab => {
@@ -768,8 +761,7 @@ impl EditorAction {
                         if let Some(var) = arg {
                             let value = var.to_string(); // 'path'
                             let path = value.get(1..value.len().sub(1)); // Remove quotes
-                            e.new_tab(path);
-                            let _ = e.activate_action(&WindowActions::OpenEditor, None);
+                            e.open_document(path.unwrap());
                         }
                     });
                 }

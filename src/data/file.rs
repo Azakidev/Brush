@@ -19,12 +19,15 @@
  */
 
 use std::{
+    collections::HashMap,
     fs::File,
     io::{Cursor, ErrorKind, Read, Write},
     path::{Path, PathBuf},
+    time::Instant,
 };
 
 use ashpd::desktop::file_chooser::{FileFilter, SelectedFiles};
+use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use url::Url;
 use uuid::Uuid;
 use zip::{
@@ -47,21 +50,23 @@ pub fn open_project(path: &Path) -> ZipResult<BrushProject> {
     Ok(project)
 }
 
-pub fn save_project(path: &Path, project: &BrushProject, preview: &[u8]) -> ZipResult<()> {
+pub fn save_project(path: &Path, project: BrushProject, preview: &[u8]) -> ZipResult<()> {
+    let s = Instant::now();
     let mut zip = prepare_zip(path)?;
     println!("Zip done");
     // Save the main project structure
-    save_structure(&mut zip, project)?;
+    save_structure(&mut zip, &project)?;
     println!("Structure done");
     // Walk through each layer and save it
     save_layers(&mut zip, &project.layers)?;
     save_refs(&mut zip, &project.references)?;
     println!("Layers done");
     // Generate a preview
-    save_preview(&mut zip, project, preview)?;
+    save_preview(&mut zip, &project, preview)?;
     println!("Preview done");
     // Commit the file
     zip.finish()?;
+    println!("File saved in {:?}", s.elapsed());
     Ok(())
 }
 
@@ -69,7 +74,7 @@ fn open_structure(zip: &mut ZipArchive<File>) -> ZipResult<BrushProject> {
     let mut structure_file = match zip.by_name("meta.json") {
         Ok(f) => f,
         Err(e) => {
-            return Err(e.into());
+            return Err(e);
         }
     };
 
@@ -130,95 +135,150 @@ fn save_preview(zip: &mut ZipWriter<File>, project: &BrushProject, data: &[u8]) 
 }
 
 fn open_layers(zip: &mut ZipArchive<File>, layers: &mut Vec<Layer>) -> ZipResult<()> {
+    // Flatten the layer tree
+    let s = Instant::now();
+    let mut flattened = Vec::new();
+    flatten_tree(&mut flattened, layers);
+
+    // Read the raw pixel data from the zip sequentially
+    let mut layer_data: HashMap<Uuid, Vec<u8>> = HashMap::with_capacity(flattened.len());
+    for layer in flattened {
+        let raw_data = open_pixel_data(zip, LAYER_FOLDER, layer.id())?;
+        layer_data.insert(layer.id(), raw_data);
+    }
+
+    // Inflate the data in parallel
+    let inflated: HashMap<Uuid, Vec<f32>> = layer_data
+        .par_iter()
+        .map(|(id, buf)| (*id, inflate_pixel_data(buf.as_slice())))
+        .collect();
+
+    // Assign it to the layers sequentially
+    fill_layer_data(&inflated, layers);
+
+    println!("File opened in {:?}", s.elapsed());
+    Ok(())
+}
+
+fn fill_layer_data(map: &HashMap<Uuid, Vec<f32>>, layers: &mut Vec<Layer>) {
     for layer in layers {
         match layer {
             Layer::Group(_) => {
                 layer.set_dirty(true);
-                if let Some(children) = layer.children_mut() {
-                    if let Err(e) = open_layers(zip, children) {
-                        return Err(e);
-                    }
-                }
+                fill_layer_data(map, layer.children_mut().unwrap());
             }
             Layer::Pixel(_) => {
                 let id = layer.id();
-                let new_data = open_pixel_data(zip, LAYER_FOLDER, id)?;
-                layer.replace_pixel_data(&new_data);
+                let data = map.get(&id).unwrap();
+                layer.replace_pixel_data(data);
             }
             _ => {} // NO OP on data only layers
         }
     }
-
-    Ok(())
 }
 
 fn save_layers(zip: &mut ZipWriter<File>, layers: &Vec<Layer>) -> ZipResult<()> {
+    let s = Instant::now();
+    let mut flattened = Vec::new();
+    flatten_tree(&mut flattened, layers);
+
+    let data: Vec<(Uuid, Vec<u8>)> = flattened
+        .par_iter()
+        .filter_map(|layer| {
+            let data = layer.pixel_data()?;
+            Some((layer.id(), get_pixel_data(data)))
+        })
+        .collect();
+
+    for (id, data) in data {
+        let options = SimpleFileOptions::default()
+            .compression_method(zip::CompressionMethod::Stored)
+            .unix_permissions(0o444);
+
+        let loc = format!("{}/{}", LAYER_FOLDER, id);
+
+        zip.start_file(&loc, options)?;
+        zip.write_all(&data)?;
+    }
+    println!("Layers written in {:?}", s.elapsed());
+    Ok(())
+}
+
+fn flatten_tree(dest: &mut Vec<Layer>, layers: &Vec<Layer>) {
     for layer in layers {
         match layer {
             // Save children if it's a group
             Layer::Group(_) => {
-                if let Some(children) = layer.children() {
-                    save_layers(zip, children)?;
-                }
+                flatten_tree(dest, layer.children().unwrap());
             }
             // Save data if it's a pixel layer
             Layer::Pixel(_) => {
-                if let Some(data) = layer.pixel_data() {
-                    save_pixel_data(zip, LAYER_FOLDER, layer.id(), data)?;
-                }
+                dest.push(layer.clone());
             }
             // Do nothing if it's a data only layer
             _ => {}
         }
     }
-    Ok(())
 }
 
 fn save_refs(zip: &mut ZipWriter<File>, refs: &Vec<RefLayer>) -> ZipResult<()> {
-    for ref_layer in refs {
-        save_pixel_data(zip, REFS_FOLDER, ref_layer.id(), ref_layer.pixel_data())?;
+    let data: Vec<(Uuid, Vec<u8>)> = refs
+        .par_iter()
+        .map(|ref_layer| (ref_layer.id(), get_pixel_data(ref_layer.pixel_data())))
+        .collect();
+
+    for (id, data) in data {
+        let options = SimpleFileOptions::default()
+            .compression_method(zip::CompressionMethod::Stored)
+            .unix_permissions(0o444);
+
+        let loc = format!("{}/{}", REFS_FOLDER, id);
+
+        zip.start_file(&loc, options)?;
+        zip.write_all(&data)?;
     }
     Ok(())
 }
 
-fn open_pixel_data(
-    zip: &mut ZipArchive<File>,
-    destination: &str,
-    id: Uuid,
-) -> ZipResult<Vec<f32>> {
+fn open_pixel_data(zip: &mut ZipArchive<File>, destination: &str, id: Uuid) -> ZipResult<Vec<u8>> {
     let loc = format!("{}/{}", destination, id);
 
     let mut file = match zip.by_name(&loc) {
         Ok(f) => f,
         Err(e) => {
-            return Err(e.into());
+            return Err(e);
         }
     };
 
     let mut buf: Vec<u8> = Vec::with_capacity(file.size() as usize);
     file.read_to_end(&mut buf)?;
 
-    let pixels: Vec<f32> = bytemuck::pod_collect_to_vec(&buf);
-    
-    Ok(pixels.to_vec())
+    Ok(buf)
 }
 
-fn save_pixel_data(
-    zip: &mut ZipWriter<File>,
-    destination: &str,
-    id: Uuid,
-    pixels: &[f32],
-) -> zip::result::ZipResult<()> {
-    let options = SimpleFileOptions::default()
-        .compression_method(zip::CompressionMethod::DEFLATE)
-        .unix_permissions(0o444);
+fn inflate_pixel_data(buf: &[u8]) -> Vec<f32> {
+    let mut decoder = flate2::read::DeflateDecoder::new(buf);
+    let mut decoded: Vec<u8> = Vec::new();
 
-    let file = format!("{}/{}", destination, id);
+    if decoder.read_to_end(&mut decoded).is_ok() {
+        let pixels: Vec<f32> = bytemuck::pod_collect_to_vec(&decoded);
+        return pixels;
+    }
 
-    zip.start_file(&file, options)?;
-    zip.write_all(bytemuck::cast_slice(pixels))?;
+    // Fallback if decompression fails somehow
+    let pixels: Vec<f32> = bytemuck::pod_collect_to_vec(buf);
+    pixels
+}
 
-    Ok(())
+fn get_pixel_data(pixels: &[f32]) -> Vec<u8> {
+    let mut encoder = flate2::write::DeflateEncoder::new(Vec::new(), flate2::Compression::fast());
+    if encoder.write_all(bytemuck::cast_slice(pixels)).is_ok() {
+        let compressed_bytes = encoder.finish().unwrap();
+        return compressed_bytes;
+    }
+
+    // Fallback if compression fails somehow
+    bytemuck::cast_slice(pixels).to_vec()
 }
 
 fn open_zip(path: &Path) -> zip::result::ZipResult<ZipArchive<File>> {
@@ -281,11 +341,11 @@ pub async fn request_open() -> ashpd::Result<Vec<PathBuf>> {
         .iter()
         .map(|uri| Url::parse(uri.as_str()).unwrap())
         .filter_map(|url| {
-            return if url.scheme() == "file" {
+            if url.scheme() == "file" {
                 Some(url.to_file_path().unwrap())
             } else {
                 None
-            };
+            }
         })
         .collect();
 

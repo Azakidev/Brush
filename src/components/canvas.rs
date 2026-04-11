@@ -277,7 +277,7 @@ impl BrushCanvas {
     ) -> Self {
         let obj: Self = glib::Object::new();
         // Project setup
-        let first_id = project.layers.first().map_or(None, |l| Some(l.id()));
+        let first_id = project.layers.first().map(|l| l.id());
         obj.imp().project.replace(project);
         obj.imp().file_location.replace(Some(loc.to_string()));
         obj.imp().active_layer.replace(first_id);
@@ -765,15 +765,25 @@ impl BrushCanvas {
     fn save_project(&self, project: BrushProject) {
         let imp = self.imp();
 
-        if let Some(loc) = imp.file_location.borrow().as_deref() {
+        if let Some(loc) = imp.file_location.borrow().clone() {
             // File string set
-            let path = Path::new(&loc);
-            if let Some(pixels) = self.get_composite(project.width as i32, project.height as i32) {
-                let result = save_project(path, &project, &pixels);
-                self.save_feedback(result);
-            } else {
-                self.save_feedback(Err(ZipError::FileNotFound));
-            }
+            glib::spawn_future_local(glib::clone!(
+                #[weak(rename_to = obj)]
+                self,
+                async move {
+                    let pixels = obj
+                        .get_composite(project.width as i32, project.height as i32)
+                        .unwrap();
+
+                    let result = gtk::gio::spawn_blocking(move || {
+                        save_project(Path::new(loc.as_str()), project, pixels.as_slice())
+                    })
+                    .await
+                    .expect("Failed to finish save");
+
+                    obj.save_feedback(result);
+                }
+            ));
         } else {
             // Location not set, prompt user
             println!("File not saved yet, prompting");

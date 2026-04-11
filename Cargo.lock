@@ -345,6 +345,7 @@ dependencies = [
  "ashpd",
  "bytemuck",
  "color",
+ "flate2",
  "gettext-rs",
  "glam",
  "glow",
