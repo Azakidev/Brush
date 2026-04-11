@@ -39,7 +39,7 @@ use std::{
     ops::{Deref, Sub},
     path::Path,
     rc::Rc,
-    str::FromStr, time::Instant,
+    str::FromStr,
 };
 use strum::IntoEnumIterator;
 use uuid::Uuid;
@@ -105,7 +105,6 @@ mod imp {
 
         // State, stored in the canvas but needs to be referenced by editor
         pub editor_state: Rc<RefCell<BrushEditorState>>,
-        pub current_project: Rc<RefCell<BrushProject>>,
         pub layer_widget_cache: RefCell<HashMap<Uuid, WeakRef<BrushLayerItem>>>,
         pub current_layer: Rc<RefCell<Option<Uuid>>>,
         pub current_zoom: Rc<Cell<f32>>,
@@ -348,10 +347,16 @@ impl BrushEditor {
         glib::Object::new()
     }
 
+    fn current_project(&self) -> RefCell<BrushProject> {
+        let canvas = self.current_page().unwrap();
+        canvas.project_context()
+    }
+
+    // TODO: Linear time activation?
     fn activate_layer(&self, id: Uuid) {
-        let s = Instant::now();
         let imp = self.imp();
-        let project = imp.current_project.borrow();
+        let project_rc = self.current_project();
+        let project = project_rc.borrow();
         let layer_widget_cache = imp.layer_widget_cache.borrow();
 
         if let Some(old_id) = *imp.current_layer.borrow()
@@ -363,7 +368,7 @@ impl BrushEditor {
         }
 
         imp.current_layer.set(Some(id));
-        self.update_controls();
+        self.update_controls(&project);
 
         if let Some(canvas) = self.current_page() {
             canvas.imp().active_layer.set(Some(id));
@@ -375,12 +380,10 @@ impl BrushEditor {
         {
             widget.update(Some(id), new_layer)
         }
-        println!("Layer activated in {:?}", s.elapsed());
     }
 
-    fn update_controls(&self) {
+    fn update_controls(&self, project: &BrushProject) {
         let imp = self.imp();
-        let project = imp.current_project.borrow();
         let layer_tree = imp.layer_tree.imp();
         // Widgets
         let opacity_slider = &layer_tree.layer_opacity;
@@ -410,26 +413,18 @@ impl BrushEditor {
         let zoom = canvas.zoom();
         let rotation = canvas.rotation();
 
-        let s = Instant::now();
         if let Some(selected_layer) = canvas.selected_layer() {
             self.imp().current_layer.set(Some(selected_layer));
         }
-        println!("CL set in {:?}", s.elapsed());
-
-        let s = Instant::now();
-        self.sync_layers_panel(&project, canvas);
-        println!("SLP in {:?}", s.elapsed());
-
-        let s = Instant::now();
-        self.imp().current_project.swap(&canvas_project);
-        println!("Project set in {:?}", s.elapsed());
 
         self.imp().current_zoom.set(zoom);
         self.imp().current_rotation.set(rotation);
+
+        self.sync_layers_panel(&project, canvas);
     }
 
+    // TODO: Async/multithreaded widget creation
     fn sync_layers_panel(&self, project: &BrushProject, canvas: &BrushCanvas) {
-        let s = Instant::now();
         let selected_layer = self.imp().current_layer.borrow();
         let layers_box = self.imp().layer_tree.get().imp().tree.get();
         let mut cache = canvas.imp().layer_widget_cache.borrow_mut();
@@ -450,8 +445,7 @@ impl BrushEditor {
         }
 
         self.imp().layer_widget_cache.replace(cache.clone());
-        self.update_controls();
-        println!("Layer widgets synced in {:?}", s.elapsed());
+        self.update_controls(project);
     }
 
     pub fn current_page(&self) -> Option<BrushCanvas> {
@@ -505,9 +499,10 @@ impl BrushEditor {
                 let tab_view = &obj.imp().tab_view;
                 let file_path = loc.clone();
 
-                let result = gtk::gio::spawn_blocking(move || open_project(Path::new(loc.as_str())))
-                    .await
-                    .expect("Failed to finish save");
+                let result =
+                    gtk::gio::spawn_blocking(move || open_project(Path::new(loc.as_str())))
+                        .await
+                        .expect("Failed to finish save");
                 match result {
                     Ok(p) => {
                         let canvas = BrushCanvas::from_project(

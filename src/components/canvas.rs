@@ -35,7 +35,6 @@ use std::{
     ops::{Deref, Sub},
     path::Path,
     rc::Rc,
-    time::{Duration, Instant},
 };
 use uuid::Uuid;
 
@@ -318,37 +317,40 @@ impl BrushCanvas {
 
     // Layer management
     fn new_pixel_layer(&self) {
-        let mut project = self.imp().project.borrow_mut();
+        let id = {
+            let mut project = self.imp().project.borrow_mut();
 
-        let name = "New pixel layer".to_owned();
-        let width = project.width;
-        let height = project.height;
+            let name = "New pixel layer".to_owned();
+            let width = project.width;
+            let height = project.height;
 
-        let s = Instant::now();
-        let layer = Layer::new_pixel(name, width, height);
-        println!("Layer made in {:?}", s.elapsed());
+            let layer = Layer::new_pixel(name, width, height);
 
-        let id = layer.id();
+            let id = layer.id();
 
-        self.push_layer(&mut project, layer);
-        self.update_tree(&mut project);
-        let _ = self
-            .activate_action("editor.activate-layer", Some(&id.to_string().to_variant()));
+            self.push_layer(&mut project, layer);
+            self.update_tree(&mut project);
+
+            id
+        };
+        let _ = self.activate_action("editor.activate-layer", Some(&id.to_string().to_variant()));
     }
 
     fn new_group_layer(&self) {
-        let mut project = self.imp().project.borrow_mut();
-        let name = "New Group".to_owned();
-        let layer = Layer::new_group(name);
-        let id = layer.id();
+        let id = {
+            let mut project = self.imp().project.borrow_mut();
+            let name = "New Group".to_owned();
+            let layer = Layer::new_group(name);
+            let id = layer.id();
 
-        self.push_layer(&mut project, layer);
-        self.update_tree(&mut project);
+            self.push_layer(&mut project, layer);
+            self.update_tree(&mut project);
+            id
+        };
         let _ = self.activate_action("editor.activate-layer", Some(&id.to_string().to_variant()));
     }
 
     fn push_layer(&self, project: &mut BrushProject, layer: Layer) {
-        let s = Instant::now();
         if let Some(active_id) = self.imp().active_layer.get()
             && let Some(active_layer) = project.find_layer_mut(active_id)
         {
@@ -382,19 +384,14 @@ impl BrushCanvas {
         } else {
             project.layers.push(layer);
         }
-        println!("Layer appended in {:?}", s.elapsed());
     }
 
     fn update_tree(&self, project: &mut BrushProject) {
-        let s = Instant::now();
-
         let mut widget_cache = self.imp().layer_widget_cache.borrow_mut();
 
         if let Some(id) = self.imp().active_layer.get() {
             project.remove_stale_widgets(id, &mut widget_cache);
         }
-
-        println!("Stale layers removed in {:?}", s.elapsed());
 
         self.imp().canvas.queue_draw();
     }
@@ -1593,13 +1590,7 @@ impl CanvasAction {
                 }
                 CanvasAction::DeleteLayer => {
                     klass.install_action(&action, None, |c, _, _| {
-                        glib::spawn_future_local(glib::clone!(
-                            #[weak]
-                            c,
-                            async move {
-                                c.remove_layer();
-                            }
-                        ));
+                        c.remove_layer();
                     });
                 }
                 CanvasAction::MoveLayerUp => {

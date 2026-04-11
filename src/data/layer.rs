@@ -466,7 +466,6 @@ impl Layer {
                         (other, None) | (None, other) => other,
                     },
                 );
-            println!("Rect: {:?}", rect);
             if let Some(r_new) = rect {
                 if let Some(r_old) = self.dirty_rect() {
                     self.set_dirty_rect(Some(r_new.union(&r_old)));
