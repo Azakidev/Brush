@@ -235,6 +235,24 @@ impl Layer {
         }
     }
 
+    pub fn is_expanded(&self) -> bool {
+        match self {
+            Layer::Pixel(inner) => inner.is_expanded,
+            Layer::Group(inner) => inner.is_expanded,
+            Layer::Fill(inner) => inner.is_expanded,
+            Layer::Filter(inner) => inner.is_expanded,
+        }
+    }
+
+    pub fn set_expanded(&mut self, exp: bool) {
+        match self {
+            Layer::Pixel(inner) => inner.is_dirty = exp,
+            Layer::Group(inner) => inner.is_dirty = exp,
+            Layer::Fill(inner) => inner.is_dirty = exp,
+            Layer::Filter(inner) => inner.is_dirty = exp,
+        }
+    }
+
     pub fn is_dirty(&self) -> bool {
         match self {
             Layer::Pixel(inner) => inner.is_dirty,
@@ -542,6 +560,8 @@ where
 
     // Transient info
     #[serde(skip_serializing, skip_deserializing)]
+    is_expanded: bool,
+    #[serde(skip_serializing, skip_deserializing)]
     is_dirty: bool,
     #[serde(skip_serializing, skip_deserializing)]
     dirty_rec: Option<Rect>,
@@ -559,6 +579,7 @@ where
             filters: Vec::new(),
             parameters,
             data,
+            is_expanded: true,
             is_dirty: true,
             dirty_rec: None,
         }

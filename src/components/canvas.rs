@@ -694,13 +694,18 @@ impl BrushCanvas {
     fn set_layer_opacity(&self, opacity: f32) {
         let imp = self.imp();
         let mut project = imp.project.borrow_mut();
-        let mut widget_cache = self.imp().layer_widget_cache.borrow_mut();
+        let widget_cache = self.imp().layer_widget_cache.borrow_mut();
 
-        if let Some(active_id) = self.imp().active_layer.get() {
-            if let Some(active_layer) = project.find_layer_mut(active_id) {
-                active_layer.set_opacity(opacity);
+        if let Some(active_id) = self.imp().active_layer.get()
+            && let Some(active_layer) = project.find_layer_mut(active_id)
+        {
+            active_layer.set_opacity(opacity);
+
+            if let Some(w) = widget_cache.get(&active_id)
+                && let Some(i) = w.upgrade()
+            {
+                i.update(Some(active_id), active_layer);
             }
-            project.remove_stale_widgets(active_id, &mut widget_cache);
         }
         imp.canvas.queue_draw();
     }
@@ -708,13 +713,18 @@ impl BrushCanvas {
     fn set_layer_blend(&self, blend_mode: BrushBlendMode) {
         let imp = self.imp();
         let mut project = imp.project.borrow_mut();
-        let mut widget_cache = self.imp().layer_widget_cache.borrow_mut();
+        let widget_cache = self.imp().layer_widget_cache.borrow_mut();
 
-        if let Some(active_id) = self.imp().active_layer.get() {
-            if let Some(active_layer) = project.find_layer_mut(active_id) {
-                active_layer.set_blend_mode(blend_mode);
+        if let Some(active_id) = self.imp().active_layer.get()
+            && let Some(active_layer) = project.find_layer_mut(active_id)
+        {
+            active_layer.set_blend_mode(blend_mode);
+
+            if let Some(w) = widget_cache.get(&active_id)
+                && let Some(i) = w.upgrade()
+            {
+                i.update(Some(active_id), active_layer);
             }
-            project.remove_stale_widgets(active_id, &mut widget_cache);
         }
         imp.canvas.queue_draw();
     }
@@ -722,11 +732,18 @@ impl BrushCanvas {
     fn toggle_visible(&self) {
         let imp = self.imp();
         let mut project = imp.project.borrow_mut();
+        let widget_cache = self.imp().layer_widget_cache.borrow_mut();
 
         if let Some(active_id) = imp.active_layer.get()
-            && let Some(layer) = project.find_layer_mut(active_id)
+            && let Some(active_layer) = project.find_layer_mut(active_id)
         {
-            layer.set_visible(!layer.visible());
+            active_layer.set_visible(!active_layer.visible());
+
+            if let Some(w) = widget_cache.get(&active_id)
+                && let Some(i) = w.upgrade()
+            {
+                i.update(Some(active_id), active_layer);
+            }
         }
         imp.canvas.queue_draw();
     }
@@ -734,44 +751,72 @@ impl BrushCanvas {
     fn toggle_alpha_clip(&self) {
         let imp = self.imp();
         let mut project = imp.project.borrow_mut();
+        let widget_cache = self.imp().layer_widget_cache.borrow_mut();
 
         if let Some(active_id) = imp.active_layer.get()
-            && let Some(layer) = project.find_layer_mut(active_id)
+            && let Some(active_layer) = project.find_layer_mut(active_id)
         {
-            layer.set_alpha_clip(!layer.alpha_clip());
+            active_layer.set_alpha_clip(!active_layer.alpha_clip());
+
+            if let Some(w) = widget_cache.get(&active_id)
+                && let Some(i) = w.upgrade()
+            {
+                i.update(Some(active_id), active_layer);
+            }
         }
         imp.canvas.queue_draw();
     }
     fn toggle_alpha_lock(&self) {
         let imp = self.imp();
         let mut project = imp.project.borrow_mut();
+        let widget_cache = self.imp().layer_widget_cache.borrow_mut();
 
         if let Some(active_id) = imp.active_layer.get()
-            && let Some(layer) = project.find_layer_mut(active_id)
+            && let Some(active_layer) = project.find_layer_mut(active_id)
         {
-            layer.set_alpha_lock(!layer.alpha_lock());
+            active_layer.set_alpha_lock(!active_layer.alpha_lock());
+
+            if let Some(w) = widget_cache.get(&active_id)
+                && let Some(i) = w.upgrade()
+            {
+                i.update(Some(active_id), active_layer);
+            }
         }
         imp.canvas.queue_draw();
     }
     fn toggle_passthrough(&self) {
         let imp = self.imp();
         let mut project = imp.project.borrow_mut();
+        let widget_cache = self.imp().layer_widget_cache.borrow_mut();
 
         if let Some(active_id) = imp.active_layer.get()
-            && let Some(layer) = project.find_layer_mut(active_id)
+            && let Some(active_layer) = project.find_layer_mut(active_id)
         {
-            layer.set_passthrough(!layer.passthrough());
+            active_layer.set_passthrough(!active_layer.passthrough());
+
+            if let Some(w) = widget_cache.get(&active_id)
+                && let Some(i) = w.upgrade()
+            {
+                i.update(Some(active_id), active_layer);
+            }
         }
         imp.canvas.queue_draw();
     }
     fn toggle_lock(&self) {
         let imp = self.imp();
         let mut project = imp.project.borrow_mut();
+        let widget_cache = self.imp().layer_widget_cache.borrow_mut();
 
         if let Some(active_id) = imp.active_layer.get()
-            && let Some(layer) = project.find_layer_mut(active_id)
+            && let Some(active_layer) = project.find_layer_mut(active_id)
         {
-            layer.set_lock(!layer.lock());
+            active_layer.set_lock(!active_layer.lock());
+
+            if let Some(w) = widget_cache.get(&active_id)
+                && let Some(i) = w.upgrade()
+            {
+                i.update(Some(active_id), active_layer);
+            }
         }
         imp.canvas.queue_draw();
     }
