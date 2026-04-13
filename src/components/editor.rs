@@ -61,6 +61,8 @@ mod imp {
 
     use gtk::{gio::prelude::ListModelExt, glib::object::CastNone};
 
+    use crate::components::color_wheel::BrushColorWheel;
+
     use super::*;
 
     #[derive(Debug, Default, glib::Properties, gtk::CompositeTemplate)]
@@ -82,6 +84,8 @@ mod imp {
         pub right_split: TemplateChild<adw::OverlaySplitView>,
         #[template_child]
         pub toolbox_revealer: TemplateChild<gtk::Revealer>,
+        #[template_child]
+        pub osd_wheel_revealer: TemplateChild<gtk::Revealer>,
 
         // Editor widgets
         #[template_child]
@@ -90,6 +94,8 @@ mod imp {
         pub secondary_chip: TemplateChild<BrushColorChip>,
         #[template_child]
         pub color_selector: TemplateChild<BrushColorSelector>,
+        #[template_child]
+        pub osd_wheel: TemplateChild<BrushColorWheel>,
         #[template_child]
         pub layer_tree: TemplateChild<BrushLayerTree>,
         #[template_child]
@@ -237,6 +243,27 @@ mod imp {
                 obj.bind_property("show_toolbox", &self.toolbox_revealer.get(), "reveal-child")
                     .sync_create()
                     .build();
+
+                obj.connect_show_toolbox_notify(|s| {
+                    if s.show_toolbox() && !s.show_editor() {
+                        s.imp().osd_wheel_revealer.set_reveal_child(true);
+                    } else {
+                        s.imp().osd_wheel_revealer.set_reveal_child(false);
+                    }
+                });
+                obj.connect_show_editor_notify(|s| {
+                    if s.show_toolbox() && !s.show_editor() {
+                        s.imp().osd_wheel_revealer.set_reveal_child(true);
+                    } else {
+                        s.imp().osd_wheel_revealer.set_reveal_child(false);
+                    }
+                });
+
+                let selector = obj.imp().color_selector.get();
+
+                obj.imp().osd_wheel.bind_property("h", &selector, "h").sync_create().bidirectional().build();
+                obj.imp().osd_wheel.bind_property("s", &selector, "s").sync_create().bidirectional().build();
+                obj.imp().osd_wheel.bind_property("v", &selector, "v").sync_create().bidirectional().build();
             }
 
             // Initial UI sync

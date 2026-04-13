@@ -483,7 +483,35 @@ template $BrushEditor: Box {
                 }
               }
 
-              Adw.TabView tab_view {}
+              Overlay {
+                [overlay]
+                Revealer osd_wheel_revealer {
+                  reveal-child: false;
+                  transition-type: slide_left;
+                  transition-duration: 100;
+                  valign: start;
+                  halign: end;
+
+                  Box {
+                    margin-top: 12;
+                    margin-end: 12;
+                    width-request: 250;
+                    height-request: 250;
+
+                    styles [
+                      "osd",
+                      "toolbar"
+                    ]
+
+                    $BrushColorWheel osd_wheel {
+                      vexpand: true;
+                      hexpand: true;
+                    }
+                  }
+                }
+
+                Adw.TabView tab_view {}
+              }
             };
           };
         };
@@ -493,24 +521,28 @@ template $BrushEditor: Box {
 }
 
 menu primary_menu {
-section {
-item {
+  section {
+    item {
       label: _("Open");
       action: "win.open-document";
     }
+
     item {
       label: _("Save");
       action: "editor.save";
     }
+
     item {
       label: _("Save As...");
       action: "editor.save-as";
     }
+
     item {
       label: _("Export As...");
       action: "editor.export-as";
     }
-}
+  }
+
   section {
     item {
       label: _("_Preferences");
