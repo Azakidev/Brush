@@ -72,6 +72,8 @@ mod imp {
             if config::APP_ID.ends_with(".Devel") {
                 obj.add_css_class("devel");
             }
+
+            obj.setup_key_controller();
         }
     }
     impl WidgetImpl for BrushWindow {}
@@ -91,6 +93,41 @@ impl BrushWindow {
         glib::Object::builder()
             .property("application", application)
             .build()
+    }
+
+    fn setup_key_controller(&self) {
+        let controller = gtk::EventControllerKey::new();
+
+        let ws = self.downgrade();
+        controller.connect_key_pressed(move |_, key, _, _| {
+            if let Some(obj) = ws.upgrade()
+                && let editor = &obj.imp().editor
+                && let Some(canvas) = editor.current_page()
+            {
+                match key {
+                    gdk::Key::space => canvas.imp().should_pan.set(true),
+                    gdk::Key::apostrophe => canvas.imp().should_pan.set(true),
+                    _ => (),
+                }
+            }
+            glib::Propagation::Proceed
+        });
+
+        let ws = self.downgrade();
+        controller.connect_key_released(move |_, key, _, _| {
+            if let Some(obj) = ws.upgrade()
+                && let editor = &obj.imp().editor
+                && let Some(canvas) = editor.current_page()
+            {
+                match key {
+                    gdk::Key::space => canvas.imp().should_pan.set(false),
+                    gdk::Key::apostrophe => canvas.imp().should_pan.set(false),
+                    _ => (),
+                }
+            }
+        });
+
+        self.add_controller(controller);
     }
 
     fn should_close_editor(&self, page_count: i32) {

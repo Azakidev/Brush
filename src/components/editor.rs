@@ -19,19 +19,15 @@
  */
 
 use adw::{
-    TabPage,
-    prelude::{GtkWindowExt, RangeExt, ToggleButtonExt, WidgetExt},
-    subclass::prelude::*,
-};
-use gtk::{
-    gdk, gio,
+    TabPage, gdk, gio,
     glib::{
         self, VariantTy, WeakRef, clone,
         object::{Cast, ObjectExt},
         property::PropertySet,
         types::StaticType,
     },
-    prelude::BoxExt,
+    prelude::{BoxExt, GtkWindowExt, RangeExt, ToggleButtonExt, WidgetExt},
+    subclass::prelude::*,
 };
 use std::{
     cell::{Cell, RefCell},
@@ -261,9 +257,24 @@ mod imp {
 
                 let selector = obj.imp().color_selector.get();
 
-                obj.imp().osd_wheel.bind_property("h", &selector, "h").sync_create().bidirectional().build();
-                obj.imp().osd_wheel.bind_property("s", &selector, "s").sync_create().bidirectional().build();
-                obj.imp().osd_wheel.bind_property("v", &selector, "v").sync_create().bidirectional().build();
+                obj.imp()
+                    .osd_wheel
+                    .bind_property("h", &selector, "h")
+                    .sync_create()
+                    .bidirectional()
+                    .build();
+                obj.imp()
+                    .osd_wheel
+                    .bind_property("s", &selector, "s")
+                    .sync_create()
+                    .bidirectional()
+                    .build();
+                obj.imp()
+                    .osd_wheel
+                    .bind_property("v", &selector, "v")
+                    .sync_create()
+                    .bidirectional()
+                    .build();
             }
 
             // Initial UI sync

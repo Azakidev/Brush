@@ -42,9 +42,9 @@ The code does and will eventually get completely replaced with human written wor
     - [ ] Select wand
     - [ ] Transform
 - [ ] Canvas interaction
-    - [ ] Middle-click / space to pan
+    - [x] Middle-click / space to pan
     - [ ] Up/down layer traversal hotkeys
     - [ ] Mirror canvas toggles
-    - [ ] Layer dragging
+    - [ ] Layer dragging on the tree widget
     - [ ] Undo/redo
     - [ ] Layer opacity spin button

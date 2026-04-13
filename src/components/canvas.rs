@@ -97,6 +97,8 @@ mod imp {
         pub stroke_mask: RefCell<Vec<u8>>,
         pub last_position: Cell<(f32, f32)>,
         pub last_pressure: Cell<f64>,
+        // Flags
+        pub should_pan: Cell<bool>,
     }
 
     #[glib::object_subclass]
@@ -111,6 +113,7 @@ mod imp {
                 position: Cell::new((0f32, 0f32)),
                 rotation: Cell::new(0f32),
                 active_layer: Cell::new(None),
+                should_pan: Cell::new(false),
                 ..Default::default()
             }
         }
@@ -157,6 +160,7 @@ mod imp {
             obj.setup_motion_controller();
             obj.setup_scroll_controller();
             obj.setup_click_controller();
+            obj.setup_middle_click_drag();
             obj.setup_drag_controller();
             obj.setup_zoom_controller();
             obj.setup_rotate_controller();
@@ -1143,12 +1147,42 @@ impl BrushCanvas {
         self.add_controller(controller);
     }
 
-    fn setup_drag_controller(&self) {
-        let drag = gtk::GestureDrag::new();
+    fn setup_middle_click_drag(&self) {
+        let controller = gtk::GestureDrag::new();
+        controller.set_button(2); // Middle-click only
 
         let start_pos = Rc::new(Cell::new((0f32, 0f32)));
 
-        drag.connect_drag_begin(clone!(
+        controller.connect_drag_begin(clone!(
+            #[weak(rename_to = obj)]
+            self,
+            #[weak]
+            start_pos,
+            move |_, _, _| {
+                let pos = obj.imp().position.get();
+                start_pos.set(pos);
+            }
+        ));
+        controller.connect_drag_update(clone!(
+            #[weak(rename_to = obj)]
+            self,
+            #[strong]
+            start_pos,
+            move |_, offset_x, offset_y| {
+                let (orig_x, orig_y) = start_pos.get();
+                obj.move_to(orig_x + offset_x as f32, orig_y + offset_y as f32)
+            }
+        ));
+
+        self.add_controller(controller);
+    }
+
+    fn setup_drag_controller(&self) {
+        let controller = gtk::GestureDrag::new();
+
+        let start_pos = Rc::new(Cell::new((0f32, 0f32)));
+
+        controller.connect_drag_begin(clone!(
             #[weak(rename_to = obj)]
             self,
             #[weak]
@@ -1188,7 +1222,7 @@ impl BrushCanvas {
             }
         ));
 
-        drag.connect_drag_update(clone!(
+        controller.connect_drag_update(clone!(
             #[weak(rename_to = obj)]
             self,
             #[strong]
@@ -1198,9 +1232,14 @@ impl BrushCanvas {
 
                 if let Some(state) = obj.imp().editor_state.get() {
                     let state = state.borrow();
-                    let tool = state.tool.borrow();
 
-                    match *tool {
+                    let tool = if obj.imp().should_pan.get() {
+                        BrushTool::Move
+                    } else {
+                        *state.tool.borrow()
+                    };
+
+                    match tool {
                         BrushTool::Move => {
                             obj.move_to(orig_x + offset_x as f32, orig_y + offset_y as f32)
                         }
@@ -1222,7 +1261,7 @@ impl BrushCanvas {
             }
         ));
 
-        drag.connect_drag_end(clone!(
+        controller.connect_drag_end(clone!(
             #[weak(rename_to = obj)]
             self,
             move |_, _, _| {
@@ -1245,7 +1284,7 @@ impl BrushCanvas {
             }
         ));
 
-        self.add_controller(drag);
+        self.add_controller(controller);
     }
 
     fn setup_motion_controller(&self) {
