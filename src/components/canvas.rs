@@ -56,7 +56,7 @@ use crate::{
         blend_modes::BrushBlendMode,
         file::{request_save, save_project},
         layer::Layer,
-        project::BrushProject,
+        project::BrushProject, rect::Rect,
     },
 };
 use strum::IntoEnumIterator;
@@ -1367,6 +1367,18 @@ impl BrushCanvas {
         (result.x as f64, result.y as f64)
     }
 
+    fn clear_layer(&self) {
+        let mut project = self.imp().project.borrow_mut();
+
+        if let Some(acive_id) = self.imp().active_layer.get() && let Some(layer) = project.find_layer_mut(acive_id) {
+            layer.clear();
+            layer.set_dirty(true);
+            layer.set_dirty_rect(Some(Rect { x: 0, y:0, w: layer.width() as i32, h: layer.height() as i32}));
+        }
+
+        self.imp().canvas.queue_draw();
+    }
+
     fn draw_stroke(&self, pressure: f64) {
         let mut project = self.imp().project.borrow_mut();
         let state = self.imp().editor_state.get().unwrap().borrow();
@@ -1591,6 +1603,8 @@ pub enum CanvasAction {
     RenameLayer,
     #[strum(to_string = "canvas.delete-layer")]
     DeleteLayer,
+    #[strum(to_string = "canvas.clear-layer")]
+    ClearLayer,
     #[strum(to_string = "canvas.move-layer-up")]
     MoveLayerUp,
     #[strum(to_string = "canvas.move-layer-down")]
@@ -1676,6 +1690,13 @@ impl CanvasAction {
                     klass.install_action(&action, None, |c, _, _| {
                         c.remove_layer();
                     });
+                }
+                CanvasAction::ClearLayer => {
+                    klass.install_action(&action, None, |c, _, _| {
+                        c.clear_layer();
+                    });
+
+                    klass.add_binding_action(gdk::Key::Delete, gdk::ModifierType::NO_MODIFIER_MASK, &action);
                 }
                 CanvasAction::MoveLayerUp => {
                     klass.install_action(&action, None, |c, _, _| {

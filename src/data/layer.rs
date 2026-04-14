@@ -395,6 +395,13 @@ impl Layer {
         }
     }
 
+    pub fn clear(&mut self) {
+        if let Layer::Pixel(inner) = self {
+            let size = (inner.data.width * inner.data.height * 4) as usize;
+            inner.data.pixels.copy_from_slice(&vec![0f32; size]);
+        }
+    }
+
     pub fn draw_brush_dab(
         &mut self,
         (x, y): (i32, i32),
