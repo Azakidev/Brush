@@ -417,18 +417,15 @@ impl Layer {
             let row_stride = width as usize * 4;
             let mask_stride = width as usize;
 
-            // if radius < 500 {
-            // } else {
-            // }
-            let rect = data
-                .par_chunks_mut(row_stride)
-                .zip(mask.par_chunks_mut(mask_stride))
-                .enumerate() // gives us the current row index
+            let rect = if radius < 300 {
+            let mut total_rect: Option<Rect> = None;
+            data
+                .chunks_mut(row_stride)
+                .zip(mask.chunks_mut(mask_stride))
+                .enumerate()
                 .filter(|(py, _)| *py >= start_y as usize && *py < end_y as usize)
-                .fold(
-                    || None,
-                    |acc: Option<Rect>, (py, (row_data, row_mask))| {
-                        let mut local_acc = acc;
+                .for_each(
+                    |(py, (row_data, row_mask))| {
                         let py = py as i32;
                         let dy = py - local_y;
 
@@ -468,22 +465,82 @@ impl Layer {
                                             w: 1,
                                             h: 1,
                                         };
-                                        local_acc =
-                                            Some(local_acc.map_or(rect, |a| a.union(&rect)));
+                                        total_rect =
+                                            Some(total_rect.map_or(rect, |a| a.union(&rect)));
                                     }
                                 }
                             }
                         }
-                        local_acc
-                    },
-                )
-                .reduce(
-                    || None,
-                    |a, b| match (a, b) {
-                        (Some(r1), Some(r2)) => Some(r1.union(&r2)),
-                        (other, None) | (None, other) => other,
                     },
                 );
+            total_rect
+            } else {
+                data
+                    .par_chunks_mut(row_stride)
+                    .zip(mask.par_chunks_mut(mask_stride))
+                    .enumerate() // gives us the current row index
+                    .filter(|(py, _)| *py >= start_y as usize && *py < end_y as usize)
+                    .fold(
+                        || None,
+                        |acc: Option<Rect>, (py, (row_data, row_mask))| {
+                            let mut local_acc = acc;
+                            let py = py as i32;
+                            let dy = py - local_y;
+
+                            for dx in -radius..radius {
+                                if dx * dx + dy * dy <= r2 {
+                                    let px = local_x + dx;
+
+                                    if px >= 0 && px < width {
+                                        let idx = (px * 4) as usize;
+                                        let mask_idx = px as usize;
+
+                                        if should_edit_pixel(row_mask, mask_idx) {
+                                            let mut orig_color_arr = [0f32; 4];
+                                            orig_color_arr.copy_from_slice(&row_data[idx..idx + 4]);
+                                            let orig_color: AlphaColor<Oklab> =
+                                                AlphaColor::new(orig_color_arr);
+
+                                            if erase_mode {
+                                                let alpha = (orig_color.components[3]
+                                                    - color.components[3])
+                                                    .max(0f32);
+                                                let final_color = orig_color.with_alpha(alpha);
+                                                row_data[idx..idx + 4]
+                                                    .copy_from_slice(&final_color.components);
+                                                } else {
+                                                    paint_pixel(
+                                                        &mut row_data[idx..idx + 4],
+                                                        color.components,
+                                                        1f32,
+                                                        alpha_lock,
+                                                    );
+                                            }
+
+                                            let rect = Rect {
+                                                x: px,
+                                                y: py,
+                                                w: 1,
+                                                h: 1,
+                                            };
+                                            local_acc =
+                                                Some(local_acc.map_or(rect, |a| a.union(&rect)));
+                                        }
+                                    }
+                                }
+                            }
+                            local_acc
+                        },
+                        )
+                            .reduce(
+                                || None,
+                                |a, b| match (a, b) {
+                                    (Some(r1), Some(r2)) => Some(r1.union(&r2)),
+                                    (other, None) | (None, other) => other,
+                                },
+                            )
+            };
+
             if let Some(r_new) = rect {
                 if let Some(r_old) = self.dirty_rect() {
                     self.set_dirty_rect(Some(r_new.union(&r_old)));
