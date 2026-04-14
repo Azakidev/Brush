@@ -18,8 +18,6 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-use std::sync::{Arc, RwLock};
-
 use color::{AlphaColor, Oklab};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -410,15 +408,13 @@ impl Layer {
         radius: i32,
         color: AlphaColor<Oklab>,
         erase_mode: bool,
-        mask: &Arc<RwLock<Vec<u8>>>,
+        mask: &mut [u8],
     ) {
         let local_x = x - self.x();
         let local_y = y - self.y();
         let (width, height) = (self.width() as i32, self.height() as i32);
         let alpha_lock = self.alpha_lock();
         let r2 = radius * radius;
-
-        let mut mask = mask.write().unwrap();
 
         // Calculate the bounding box of the dab to limit the work area
         let start_y = (local_y - radius).clamp(0, height);

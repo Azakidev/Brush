@@ -194,7 +194,7 @@ unsafe fn render_layer_tree(
                     }
 
                     if let Some(colors) = layer.pixel_data() {
-                        let btyes = bytemuck::cast_slice(&colors);
+                        let btyes = bytemuck::cast_slice(colors);
 
                         unsafe {
                             gl.tex_sub_image_2d(

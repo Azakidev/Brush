@@ -186,7 +186,7 @@ fn save_layers(zip: &mut ZipWriter<File>, layers: &Vec<Layer>) -> ZipResult<()> 
         .par_iter()
         .filter_map(|layer| {
             let data = layer.pixel_data()?;
-            Some((layer.id(), get_pixel_data(&data)))
+            Some((layer.id(), get_pixel_data(data)))
         })
         .collect();
 
