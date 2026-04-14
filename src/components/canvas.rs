@@ -19,6 +19,7 @@
  */
 
 use adw::{prelude::*, subclass::prelude::*};
+use color::{AlphaColor, Oklab};
 use glow::{Context, NativeVertexArray};
 use gtk::{
     gdk,
@@ -27,7 +28,6 @@ use gtk::{
 use libloading::Library;
 use zip::result::ZipError;
 
-use core::f64;
 use std::{
     cell::{Cell, OnceCell, RefCell},
     collections::HashMap,
@@ -35,6 +35,7 @@ use std::{
     ops::{Deref, Sub},
     path::Path,
     rc::Rc,
+    sync::{Arc, RwLock},
 };
 use uuid::Uuid;
 
@@ -43,20 +44,19 @@ use crate::{
         editor::EditorAction,
         layer_item::BrushLayerItem,
         utils::{
-            editor_state::BrushEditorState,
-            renderer::{
+            canvas::draw_stroke, editor_state::BrushEditorState, renderer::{
                 buffer::LayerBuffer,
                 render::{render_pass, setup_gl},
                 shader_manager::ShaderManager,
-            },
-            tools::BrushTool,
+            }, tools::BrushTool
         },
     },
     data::{
         blend_modes::BrushBlendMode,
         file::{request_save, save_project},
         layer::Layer,
-        project::BrushProject, rect::Rect,
+        project::BrushProject,
+        rect::Rect,
     },
 };
 use strum::IntoEnumIterator;
@@ -89,13 +89,13 @@ mod imp {
         // Viewport
         pub active_layer: Cell<Option<Uuid>>,
         pub zoom: Cell<f32>,
-        pub position: Cell<(f32, f32)>, // Offset from screen center
+        pub position: Cell<(f64, f64)>, // Offset from screen center
         pub rotation: Cell<f32>,        // Radians
-        pub mouse_pos: Cell<(f32, f32)>,
+        pub mouse_pos: Cell<(f64, f64)>,
 
         // Stroke handling
-        pub stroke_mask: RefCell<Vec<u8>>,
-        pub last_position: Cell<(f32, f32)>,
+        pub stroke_mask: Arc<RwLock<Vec<u8>>>,
+        pub last_position: Cell<(f64, f64)>,
         pub last_pressure: Cell<f64>,
         // Flags
         pub should_pan: Cell<bool>,
@@ -110,8 +110,8 @@ mod imp {
         fn new() -> Self {
             Self {
                 zoom: Cell::new(1f32),
-                position: Cell::new((0f32, 0f32)),
-                rotation: Cell::new(0f32),
+                position: Cell::new((0., 0.)),
+                rotation: Cell::new(0.),
                 active_layer: Cell::new(None),
                 should_pan: Cell::new(false),
                 ..Default::default()
@@ -923,15 +923,15 @@ impl BrushCanvas {
         self.imp().canvas.queue_draw();
     }
 
-    fn move_by(&self, dx: f32, dy: f32) {
+    fn move_by(&self, dx: f64, dy: f64) {
         let (x, y) = self.imp().position.get();
-        let zoom = self.zoom();
+        let zoom = self.zoom() as f64;
 
         self.imp().position.set((x + (dx * zoom), y + (dy * zoom)));
         self.imp().canvas.queue_draw();
     }
 
-    fn move_to(&self, x: f32, y: f32) {
+    fn move_to(&self, x: f64, y: f64) {
         self.imp().position.set((x, y));
         self.imp().canvas.queue_draw();
     }
@@ -961,7 +961,7 @@ impl BrushCanvas {
         let scale = scale_x.min(scale_y);
 
         self.zoom_to(scale);
-        self.move_to(0f32, 0f32);
+        self.move_to(0., 0.);
         imp.canvas.get().queue_draw();
     }
 
@@ -1023,9 +1023,9 @@ impl BrushCanvas {
     fn setup_zoom_controller(&self) {
         let controller = gtk::GestureZoom::new();
 
-        let start_zoom = Rc::new(Cell::new(0f32));
-        let start_pos = Rc::new(Cell::new((0f32, 0f32)));
-        let start_drag = Rc::new(Cell::new((0f32, 0f32)));
+        let start_zoom = Rc::new(Cell::new(0.));
+        let start_pos = Rc::new(Cell::new((0f64, 0f64)));
+        let start_drag = Rc::new(Cell::new((0f64, 0f64)));
 
         controller.connect_begin(clone!(
             #[weak(rename_to = obj)]
@@ -1043,7 +1043,7 @@ impl BrushCanvas {
                 start_pos.set(imp.position.get());
 
                 if let Some((x, y)) = gesture.bounding_box_center() {
-                    start_drag.set((x as f32, y as f32));
+                    start_drag.set((x, y));
                 }
             }
         ));
@@ -1067,11 +1067,11 @@ impl BrushCanvas {
                     let (old_x, old_y) = start_drag.get();
                     let (canvas_old_x, canvas_old_y) = start_pos.get();
 
-                    let dx = center_x as f32 - old_x;
-                    let dy = center_y as f32 - old_y;
+                    let dx = center_x - old_x;
+                    let dy = center_y - old_y;
 
-                    let new_x = canvas_old_x + dx * zoom as f32;
-                    let new_y = canvas_old_y + dy * zoom as f32;
+                    let new_x = canvas_old_x + dx * zoom as f64;
+                    let new_y = canvas_old_y + dy * zoom as f64;
 
                     obj.move_to(new_x, new_y);
                 }
@@ -1091,6 +1091,8 @@ impl BrushCanvas {
             self,
             move |gesture, _, _x, _y| {
                 if let Some(state) = obj.imp().editor_state.get() {
+                    let mask = obj.imp().stroke_mask.clone();
+
                     let state = state.borrow();
                     let tool = state.tool.borrow();
 
@@ -1110,7 +1112,46 @@ impl BrushCanvas {
                                     .axis(gdk::AxisUse::Ytilt)
                                     .unwrap_or(0.0)
                                     .clamp(-1f64, 1f64);
-                                obj.draw_stroke(pressure);
+                                glib::spawn_future_local(glib::clone!(
+                                    #[weak (rename_to = c)]
+                                    obj,
+                                    #[strong]
+                                    state,
+                                    #[strong]
+                                    mask,
+                                    #[strong]
+                                    pressure,
+                                    async move {
+                                        let mut project = c.imp().project.borrow_mut();
+                                        let a_id = c.imp().active_layer.get();
+                                        let screen = (c.width() as f32, c.height() as f32);
+                                        let position = c.imp().position.get();
+                                        let zoom = c.zoom();
+                                        let rotation = c.rotation();
+                                        let cp = c.imp().mouse_pos.get();
+                                        let lp = c.imp().last_position.get();
+                                        let l_pressure = c.imp().last_pressure.get();
+
+                                        draw_stroke(
+                                            &mut project,
+                                            a_id,
+                                            &state,
+                                            mask,
+                                            pressure,
+                                            l_pressure,
+                                            cp,
+                                            lp,
+                                            screen,
+                                            position,
+                                            zoom,
+                                            rotation,
+                                        )
+                                        .await;
+
+                                        c.imp().last_position.replace(c.imp().mouse_pos.get());
+                                        c.imp().last_pressure.set(pressure);
+                                    }
+                                ));
                             }
                         }
                         _ => {
@@ -1151,7 +1192,7 @@ impl BrushCanvas {
         let controller = gtk::GestureDrag::new();
         controller.set_button(2); // Middle-click only
 
-        let start_pos = Rc::new(Cell::new((0f32, 0f32)));
+        let start_pos = Rc::new(Cell::new((0., 0.)));
 
         controller.connect_drag_begin(clone!(
             #[weak(rename_to = obj)]
@@ -1170,7 +1211,7 @@ impl BrushCanvas {
             start_pos,
             move |_, offset_x, offset_y| {
                 let (orig_x, orig_y) = start_pos.get();
-                obj.move_to(orig_x + offset_x as f32, orig_y + offset_y as f32)
+                obj.move_to(orig_x + offset_x, orig_y + offset_y)
             }
         ));
 
@@ -1180,7 +1221,7 @@ impl BrushCanvas {
     fn setup_drag_controller(&self) {
         let controller = gtk::GestureDrag::new();
 
-        let start_pos = Rc::new(Cell::new((0f32, 0f32)));
+        let start_pos = Rc::new(Cell::new((0., 0.)));
 
         controller.connect_drag_begin(clone!(
             #[weak(rename_to = obj)]
@@ -1202,16 +1243,12 @@ impl BrushCanvas {
                             if let Some(event) = gesture.last_event(None) {
                                 let pressure = event
                                     .axis(gdk::AxisUse::Pressure)
-                                    .unwrap_or(1.0)
-                                    .clamp(0f64, 1f64);
-                                let _x_tilt = event
-                                    .axis(gdk::AxisUse::Xtilt)
-                                    .unwrap_or(0.0)
-                                    .clamp(-1f64, 1f64);
-                                let _y_tilt = event
-                                    .axis(gdk::AxisUse::Ytilt)
-                                    .unwrap_or(0.0)
-                                    .clamp(-1f64, 1f64);
+                                    .unwrap_or(1.)
+                                    .clamp(0., 1.);
+                                let _x_tilt =
+                                    event.axis(gdk::AxisUse::Xtilt).unwrap_or(0.).clamp(-1., 1.);
+                                let _y_tilt =
+                                    event.axis(gdk::AxisUse::Ytilt).unwrap_or(0.).clamp(-1., 1.);
 
                                 obj.imp().last_pressure.set(pressure);
                             }
@@ -1231,6 +1268,8 @@ impl BrushCanvas {
                 let (orig_x, orig_y) = start_pos.get();
 
                 if let Some(state) = obj.imp().editor_state.get() {
+                    let mask = obj.imp().stroke_mask.clone();
+
                     let state = state.borrow();
 
                     let tool = if obj.imp().should_pan.get() {
@@ -1240,15 +1279,52 @@ impl BrushCanvas {
                     };
 
                     match tool {
-                        BrushTool::Move => {
-                            obj.move_to(orig_x + offset_x as f32, orig_y + offset_y as f32)
-                        }
+                        BrushTool::Move => obj.move_to(orig_x + offset_x, orig_y + offset_y),
                         BrushTool::Brush => {
                             if let Some(event) = gesture.last_event(None) {
-                                let pressure = event.axis(gdk::AxisUse::Pressure).unwrap_or(1.0);
-                                let _x_tilt = event.axis(gdk::AxisUse::Xtilt).unwrap_or(0.0);
-                                let _y_tilt = event.axis(gdk::AxisUse::Ytilt).unwrap_or(0.0);
-                                obj.draw_stroke(pressure);
+                                let pressure = event.axis(gdk::AxisUse::Pressure).unwrap_or(1.);
+                                let _x_tilt = event.axis(gdk::AxisUse::Xtilt).unwrap_or(0.);
+                                let _y_tilt = event.axis(gdk::AxisUse::Ytilt).unwrap_or(0.);
+                                glib::spawn_future_local(glib::clone!(
+                                    #[weak (rename_to = c)]
+                                    obj,
+                                    #[strong]
+                                    state,
+                                    #[strong]
+                                    mask,
+                                    #[strong]
+                                    pressure,
+                                    async move {
+                                        let mut project = c.imp().project.borrow_mut();
+                                        let a_id = c.imp().active_layer.get();
+                                        let screen = (c.width() as f32, c.height() as f32);
+                                        let position = c.imp().position.get();
+                                        let zoom = c.zoom();
+                                        let rotation = c.rotation();
+                                        let cp = c.imp().mouse_pos.get();
+                                        let lp = c.imp().last_position.get();
+                                        let l_pressure = c.imp().last_pressure.get();
+
+                                        draw_stroke(
+                                            &mut project,
+                                            a_id,
+                                            &state,
+                                            mask,
+                                            pressure,
+                                            l_pressure,
+                                            cp,
+                                            lp,
+                                            screen,
+                                            position,
+                                            zoom,
+                                            rotation,
+                                        )
+                                        .await;
+
+                                        c.imp().last_position.replace(c.imp().mouse_pos.get());
+                                        c.imp().last_pressure.set(pressure);
+                                    }
+                                ));
                             }
                         }
                         _ => {
@@ -1293,7 +1369,7 @@ impl BrushCanvas {
 
         motion.connect_motion(move |_, x, y| {
             if let Some(obj) = weak_self.upgrade() {
-                obj.imp().mouse_pos.set((x as f32, y as f32));
+                obj.imp().mouse_pos.set((x, y));
             }
         });
         self.add_controller(motion);
@@ -1311,11 +1387,11 @@ impl BrushCanvas {
 
             let imp = obj.imp();
 
-            let (win_w, win_h) = (obj.width() as f32, obj.height() as f32);
+            let (win_w, win_h) = (obj.width() as f64, obj.height() as f64);
 
             let (mouse_x, mouse_y) = imp.mouse_pos.get();
 
-            let old_zoom = imp.zoom.get();
+            let old_zoom = imp.zoom.get() as f64;
             let (old_x, old_y) = imp.position.get();
 
             let zoom_mult = if dy < 0.0 { 1.1 } else { 0.9 };
@@ -1326,7 +1402,7 @@ impl BrushCanvas {
             let new_x = mouse_x - win_w / 2.0 - factor * (mouse_x - win_w / 2.0 - old_x);
             let new_y = mouse_y - win_h / 2.0 - factor * (mouse_y - win_h / 2.0 - old_y);
 
-            obj.zoom_to(zoom);
+            obj.zoom_to(zoom as f32);
             obj.move_to(new_x, new_y);
             obj.imp().canvas.queue_draw();
 
@@ -1336,147 +1412,32 @@ impl BrushCanvas {
         self.add_controller(scroll);
     }
 
-    pub fn screen_to_canvas(
-        &self,
-        project: &BrushProject,
-        screen_x: f64,
-        screen_y: f64,
-    ) -> (f64, f64) {
-        let imp = self.imp();
-
-        let win_w = self.width() as f32;
-        let win_h = self.height() as f32;
-        let canv_w = project.width as f32;
-        let canv_h = project.height as f32;
-
-        let zoom = imp.zoom.get();
-        let rotation = imp.rotation.get(); // In radians
-        let (pos_x, pos_y) = imp.position.get();
-
-        let view =
-            glam::Mat4::from_translation(glam::vec3(win_w / 2.0 + pos_x, win_h / 2.0 + pos_y, 0.0))
-                * glam::Mat4::from_rotation_z(rotation)
-                * glam::Mat4::from_scale(glam::vec3(zoom, zoom, 1.0))
-                * glam::Mat4::from_translation(glam::vec3(-canv_w / 2.0, -canv_h / 2.0, 0.0));
-
-        let inv_view = view.inverse();
-
-        let point = glam::vec4(screen_x as f32, screen_y as f32, 0.0, 1.0);
-        let result = inv_view * point;
-
-        (result.x as f64, result.y as f64)
-    }
-
     fn clear_layer(&self) {
         let mut project = self.imp().project.borrow_mut();
 
-        if let Some(acive_id) = self.imp().active_layer.get() && let Some(layer) = project.find_layer_mut(acive_id) {
+        if let Some(acive_id) = self.imp().active_layer.get()
+            && let Some(layer) = project.find_layer_mut(acive_id)
+        {
             layer.clear();
             layer.set_dirty(true);
-            layer.set_dirty_rect(Some(Rect { x: 0, y:0, w: layer.width() as i32, h: layer.height() as i32}));
+            layer.set_dirty_rect(Some(Rect {
+                x: 0,
+                y: 0,
+                w: layer.width() as i32,
+                h: layer.height() as i32,
+            }));
         }
 
         self.imp().canvas.queue_draw();
-    }
-
-    fn draw_stroke(&self, pressure: f64) {
-        let mut project = self.imp().project.borrow_mut();
-        let state = self.imp().editor_state.get().unwrap().borrow();
-
-        let mut mask = self.imp().stroke_mask.borrow_mut();
-
-        // Brush parameters
-        let base_size = state.brush_size.borrow();
-        let base_opacity = state.brush_opacity.borrow();
-        let erase_mode = state.erase_mode.borrow();
-
-        let color = state.primary_color.borrow().with_alpha(*base_opacity);
-
-        // Brush coordinates
-        let (px, py) = self.imp().mouse_pos.get();
-        let cp = self.screen_to_canvas(&project, px as f64, py as f64);
-        let (lx, ly) = self.imp().last_position.get();
-        let lp = self.screen_to_canvas(&project, lx as f64, ly as f64);
-
-        let l_pressure = self.imp().last_pressure.get();
-
-        self.imp().last_position.replace(self.imp().mouse_pos.get());
-        self.imp().last_pressure.set(pressure);
-
-        let interpolation_factor = (0.1 * l_pressure).clamp(1e-6f64, 0.1);
-
-        if let Some(active_id) = self.imp().active_layer.get() {
-            if project.is_layer_in_lock(active_id) {
-                // Don't draw if locked or hidden
-                return;
-            }
-
-            // TODO: Brush engine
-            if let Some(layer) = project.find_layer_mut(active_id) {
-                let points = interpolate_stroke(
-                    cp,
-                    lp,
-                    *base_size as f64,
-                    pressure,
-                    l_pressure,
-                    interpolation_factor,
-                );
-                for (x, y, p) in points {
-                    let dynamic_size = (*base_size as f64 * p).clamp(1f64, 1000f64);
-                    layer.draw_brush_dab(
-                        (x as i32, y as i32),
-                        dynamic_size as i32,
-                        color.convert(),
-                        *erase_mode,
-                        &mut mask,
-                    );
-                }
-            }
-        }
-
-        self.imp().canvas.queue_render();
     }
 
     fn clear_mask(&self) {
         let project = self.imp().project.borrow();
         let size = project.width * project.height;
 
-        let mask: Vec<u8> = vec![0; size as usize];
-        self.imp().stroke_mask.replace(mask);
+        let mut mask = self.imp().stroke_mask.write().unwrap();
+        *mask = vec![0; size as usize];
     }
-}
-
-fn interpolate_stroke(
-    new_pos: (f64, f64),
-    last_pos: (f64, f64),
-    brush_radius: f64,
-    new_pressure: f64,
-    last_pressure: f64,
-    spacing_ratio: f64, // e.g., 0.1 for 10% spacing
-) -> Vec<(f64, f64, f64)> {
-    let dx = new_pos.0 - last_pos.0;
-    let dy = new_pos.1 - last_pos.1;
-    let distance = (dx * dx + dy * dy).sqrt();
-
-    if distance < f64::EPSILON {
-        return vec![(new_pos.0, new_pos.1, new_pressure)];
-    }
-
-    let step_size = (brush_radius * 2f64) * spacing_ratio;
-    let mut points = Vec::new();
-
-    let mut traveled = 0f64;
-    while traveled < distance {
-        let t = traveled / distance;
-
-        let x = last_pos.0 + dx * t;
-        let y = last_pos.1 + dy * t;
-        let p = last_pressure + (new_pressure - last_pressure) * t;
-
-        points.push((x, y, p));
-        traveled += step_size;
-    }
-    points
 }
 
 unsafe fn capture_oklab_to_srgb_png(
@@ -1696,7 +1657,11 @@ impl CanvasAction {
                         c.clear_layer();
                     });
 
-                    klass.add_binding_action(gdk::Key::Delete, gdk::ModifierType::NO_MODIFIER_MASK, &action);
+                    klass.add_binding_action(
+                        gdk::Key::Delete,
+                        gdk::ModifierType::NO_MODIFIER_MASK,
+                        &action,
+                    );
                 }
                 CanvasAction::MoveLayerUp => {
                     klass.install_action(&action, None, |c, _, _| {
@@ -1772,7 +1737,7 @@ impl CanvasAction {
                 }
                 CanvasAction::PanUp => {
                     klass.install_action(&action, None, move |c, _, _| {
-                        c.move_by(0f32, 60f32);
+                        c.move_by(0., 60.);
                     });
 
                     klass.add_binding_action(
@@ -1783,7 +1748,7 @@ impl CanvasAction {
                 }
                 CanvasAction::PanDown => {
                     klass.install_action(&action, None, move |c, _, _| {
-                        c.move_by(0f32, -60f32);
+                        c.move_by(0., -60.);
                     });
 
                     klass.add_binding_action(
@@ -1794,7 +1759,7 @@ impl CanvasAction {
                 }
                 CanvasAction::PanLeft => {
                     klass.install_action(&action, None, move |c, _, _| {
-                        c.move_by(60f32, 0f32);
+                        c.move_by(60., 0.);
                     });
 
                     klass.add_binding_action(
@@ -1805,7 +1770,7 @@ impl CanvasAction {
                 }
                 CanvasAction::PanRight => {
                     klass.install_action(&action, None, move |c, _, _| {
-                        c.move_by(-60f32, 0f32);
+                        c.move_by(-60., 0.);
                     });
 
                     klass.add_binding_action(

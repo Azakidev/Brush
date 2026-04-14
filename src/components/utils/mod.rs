@@ -23,5 +23,6 @@ pub mod editor_state;
 // Utilities
 pub mod color;
 pub mod tools;
+pub mod canvas;
 // Editor
 pub mod renderer;

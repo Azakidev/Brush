@@ -449,7 +449,7 @@ fn calculate_global_mvp(
     let projection = glam::Mat4::orthographic_lh(0.0, win_w, win_h, 0.0, -1.0, 1.0);
 
     let view =
-        glam::Mat4::from_translation(glam::vec3(win_w / 2.0 + pos_x, win_h / 2.0 + pos_y, 0.0))
+        glam::Mat4::from_translation(glam::vec3(win_w / 2.0 + pos_x as f32, win_h / 2.0 + pos_y as f32, 0.0))
             * glam::Mat4::from_rotation_z(rotation)
             * glam::Mat4::from_scale(glam::vec3(zoom, zoom, 1.0))
             * glam::Mat4::from_translation(glam::vec3(-canvas_w / 2.0, -canvas_h / 2.0, 0.0));

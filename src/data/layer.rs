@@ -404,17 +404,17 @@ impl Layer {
 
     pub fn draw_brush_dab(
         &mut self,
+        mask: &mut [u8],
         (x, y): (i32, i32),
         radius: i32,
         color: AlphaColor<Oklab>,
         erase_mode: bool,
-        mask: &mut [u8],
+        should_par: bool,
     ) {
-        let local_x = x - self.x();
-        let local_y = y - self.y();
+        let (local_x, local_y) = (x - self.x(), y - self.y());
         let (width, height) = (self.width() as i32, self.height() as i32);
         let alpha_lock = self.alpha_lock();
-        let r2 = radius * radius;
+        let r2 = radius.pow(2);
 
         // Calculate the bounding box of the dab to limit the work area
         let start_y = (local_y - radius).clamp(0, height);
@@ -424,20 +424,19 @@ impl Layer {
             let row_stride = width as usize * 4;
             let mask_stride = width as usize;
 
-            let rect = if radius < 300 {
-            let mut total_rect: Option<Rect> = None;
-            data
-                .chunks_mut(row_stride)
-                .zip(mask.chunks_mut(mask_stride))
-                .enumerate()
-                .filter(|(py, _)| *py >= start_y as usize && *py < end_y as usize)
-                .for_each(
-                    |(py, (row_data, row_mask))| {
+            let rect = if !should_par {
+                let mut total_rect: Option<Rect> = None;
+
+                data.chunks_mut(row_stride)
+                    .zip(mask.chunks_mut(mask_stride))
+                    .enumerate()
+                    .filter(|(py, _)| *py >= start_y as usize && *py < end_y as usize)
+                    .for_each(|(py, (row_data, row_mask))| {
                         let py = py as i32;
                         let dy = py - local_y;
 
                         for dx in -radius..radius {
-                            if dx * dx + dy * dy <= r2 {
+                            if dx.pow(2) + dy.pow(2) <= r2 {
                                 let px = local_x + dx;
 
                                 if px >= 0 && px < width {
@@ -445,45 +444,31 @@ impl Layer {
                                     let mask_idx = px as usize;
 
                                     if should_edit_pixel(row_mask, mask_idx) {
-                                        let mut orig_color_arr = [0f32; 4];
-                                        orig_color_arr.copy_from_slice(&row_data[idx..idx + 4]);
-                                        let orig_color: AlphaColor<Oklab> =
-                                            AlphaColor::new(orig_color_arr);
+                                        let og_col = &mut row_data[idx..idx + 4];
 
                                         if erase_mode {
-                                            let alpha = (orig_color.components[3]
-                                                - color.components[3])
-                                                .max(0f32);
-                                            let final_color = orig_color.with_alpha(alpha);
-                                            row_data[idx..idx + 4]
-                                                .copy_from_slice(&final_color.components);
+                                            og_col[3] = (og_col[3] - color.components[3]).max(0f32);
                                         } else {
-                                            paint_pixel(
-                                                &mut row_data[idx..idx + 4],
-                                                color.components,
-                                                1f32,
-                                                alpha_lock,
-                                            );
+                                            paint_pixel(og_col, color.components, 1f32, alpha_lock);
                                         }
 
-                                        let rect = Rect {
-                                            x: px,
-                                            y: py,
-                                            w: 1,
-                                            h: 1,
-                                        };
-                                        total_rect =
-                                            Some(total_rect.map_or(rect, |a| a.union(&rect)));
+                                        total_rect = Some(total_rect.map_or(
+                                            Rect {
+                                                x: px,
+                                                y: py,
+                                                w: 1,
+                                                h: 1,
+                                            },
+                                            |a| a.extend_pt(px, py),
+                                        ));
                                     }
                                 }
                             }
                         }
-                    },
-                );
-            total_rect
+                    });
+                total_rect
             } else {
-                data
-                    .par_chunks_mut(row_stride)
+                data.par_chunks_mut(row_stride)
                     .zip(mask.par_chunks_mut(mask_stride))
                     .enumerate() // gives us the current row index
                     .filter(|(py, _)| *py >= start_y as usize && *py < end_y as usize)
@@ -495,7 +480,7 @@ impl Layer {
                             let dy = py - local_y;
 
                             for dx in -radius..radius {
-                                if dx * dx + dy * dy <= r2 {
+                                if dx.pow(2) + dy.pow(2) <= r2 {
                                     let px = local_x + dx;
 
                                     if px >= 0 && px < width {
@@ -503,49 +488,43 @@ impl Layer {
                                         let mask_idx = px as usize;
 
                                         if should_edit_pixel(row_mask, mask_idx) {
-                                            let mut orig_color_arr = [0f32; 4];
-                                            orig_color_arr.copy_from_slice(&row_data[idx..idx + 4]);
-                                            let orig_color: AlphaColor<Oklab> =
-                                                AlphaColor::new(orig_color_arr);
+                                            let og_col = &mut row_data[idx..idx + 4];
 
                                             if erase_mode {
-                                                let alpha = (orig_color.components[3]
-                                                    - color.components[3])
-                                                    .max(0f32);
-                                                let final_color = orig_color.with_alpha(alpha);
-                                                row_data[idx..idx + 4]
-                                                    .copy_from_slice(&final_color.components);
-                                                } else {
-                                                    paint_pixel(
-                                                        &mut row_data[idx..idx + 4],
-                                                        color.components,
-                                                        1f32,
-                                                        alpha_lock,
-                                                    );
+                                                og_col[3] =
+                                                    (og_col[3] - color.components[3]).max(0f32);
+                                            } else {
+                                                paint_pixel(
+                                                    og_col,
+                                                    color.components,
+                                                    1f32,
+                                                    alpha_lock,
+                                                );
                                             }
 
-                                            let rect = Rect {
-                                                x: px,
-                                                y: py,
-                                                w: 1,
-                                                h: 1,
-                                            };
-                                            local_acc =
-                                                Some(local_acc.map_or(rect, |a| a.union(&rect)));
+                                            local_acc = Some(local_acc.map_or(
+                                                Rect {
+                                                    x: px,
+                                                    y: py,
+                                                    w: 1,
+                                                    h: 1,
+                                                },
+                                                |a| a.extend_pt(px, py),
+                                            ));
                                         }
                                     }
                                 }
                             }
                             local_acc
                         },
-                        )
-                            .reduce(
-                                || None,
-                                |a, b| match (a, b) {
-                                    (Some(r1), Some(r2)) => Some(r1.union(&r2)),
-                                    (other, None) | (None, other) => other,
-                                },
-                            )
+                    )
+                    .reduce(
+                        || None,
+                        |a, b| match (a, b) {
+                            (Some(r1), Some(r2)) => Some(r1.union(&r2)),
+                            (other, None) | (None, other) => other,
+                        },
+                    )
             };
 
             if let Some(r_new) = rect {
@@ -563,22 +542,11 @@ impl Layer {
 
 fn paint_pixel(canvas_rgba: &mut [f32], brush_rgba: [f32; 4], strength: f32, alpha_lock: bool) {
     let src_a = brush_rgba[3] * strength;
+    let dst_a = canvas_rgba[3];
+
     if src_a <= 0.0 {
         return;
     }
-
-    let src_r = brush_rgba[0] * src_a;
-    let src_g = brush_rgba[1] * src_a;
-    let src_b = brush_rgba[2] * src_a;
-
-    let dst_r = canvas_rgba[0];
-    let dst_g = canvas_rgba[1];
-    let dst_b = canvas_rgba[2];
-    let dst_a = canvas_rgba[3];
-
-    let dst_pre_r = dst_r * dst_a;
-    let dst_pre_g = dst_g * dst_a;
-    let dst_pre_b = dst_b * dst_a;
 
     let out_a = if alpha_lock {
         dst_a
@@ -586,15 +554,17 @@ fn paint_pixel(canvas_rgba: &mut [f32], brush_rgba: [f32; 4], strength: f32, alp
         src_a + dst_a * (1.0 - src_a)
     };
 
-    let out_pre_r = src_r + dst_pre_r * (1.0 - src_a);
-    let out_pre_g = src_g + dst_pre_g * (1.0 - src_a);
-    let out_pre_b = src_b + dst_pre_b * (1.0 - src_a);
-
     if out_a > f32::EPSILON {
-        canvas_rgba[0] = out_pre_r / out_a;
-        canvas_rgba[1] = out_pre_g / out_a;
-        canvas_rgba[2] = out_pre_b / out_a;
-        canvas_rgba[3] = out_a;
+        let mut c_rgb = [0f32; 3];
+        c_rgb.copy_from_slice(&canvas_rgba[0..3]);
+
+        brush_rgba[0..3]
+            .iter()
+            .zip(c_rgb.iter())
+            .map(|(s, d)| ((s * src_a) + (d * dst_a) * (1.0 - src_a)) / out_a)
+            .chain(std::iter::once(out_a))
+            .enumerate()
+            .for_each(|(i, c)| canvas_rgba[i] = c);
     } else {
         canvas_rgba.copy_from_slice(&[0.0, 0.0, 0.0, 0.0]);
     }
