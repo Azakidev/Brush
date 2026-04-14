@@ -1176,6 +1176,7 @@ impl BrushCanvas {
                         BrushTool::Move => {} // NO OP
                         BrushTool::Brush => {
                             obj.clear_mask();
+                            obj.update_layer();
                         }
                         _ => {
                             println!("Tool not implemented!")
@@ -1349,6 +1350,7 @@ impl BrushCanvas {
                         BrushTool::Move => {} // No-op
                         BrushTool::Brush => {
                             obj.clear_mask();
+                            obj.update_layer();
                         }
                         _ => {
                             println!("Tool not implemented!")
@@ -1410,6 +1412,23 @@ impl BrushCanvas {
         });
 
         self.add_controller(scroll);
+    }
+
+    fn update_layer(&self) {
+        let mut project = self.imp().project.borrow_mut();
+
+        if let Some(acive_id) = self.imp().active_layer.get()
+            && let Some(layer) = project.find_layer_mut(acive_id)
+        {
+            layer.set_dirty(true);
+            layer.set_dirty_rect(Some(Rect {
+                x: 0,
+                y: 0,
+                w: layer.width() as i32,
+                h: layer.height() as i32,
+            }));
+        }
+
     }
 
     fn clear_layer(&self) {
