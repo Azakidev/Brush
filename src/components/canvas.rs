@@ -56,8 +56,7 @@ use crate::{
         blend_modes::BrushBlendMode,
         file::{request_save, save_project},
         layer::Layer,
-        project::BrushProject,
-        rect::Rect,
+        project::BrushProject, rect::Rect,
     },
 };
 use strum::IntoEnumIterator;
@@ -1111,9 +1110,7 @@ impl BrushCanvas {
                                     .axis(gdk::AxisUse::Ytilt)
                                     .unwrap_or(0.0)
                                     .clamp(-1f64, 1f64);
-                                glib::spawn_future_local(glib::clone!(#[weak(rename_to = c)] obj, async move {
-                                    c.draw_stroke(pressure).await;
-                                }));
+                                obj.draw_stroke(pressure);
                             }
                         }
                         _ => {
@@ -1251,9 +1248,7 @@ impl BrushCanvas {
                                 let pressure = event.axis(gdk::AxisUse::Pressure).unwrap_or(1.0);
                                 let _x_tilt = event.axis(gdk::AxisUse::Xtilt).unwrap_or(0.0);
                                 let _y_tilt = event.axis(gdk::AxisUse::Ytilt).unwrap_or(0.0);
-                                glib::spawn_future_local(glib::clone!(#[weak(rename_to = c)] obj, async move {
-                                    c.draw_stroke(pressure).await;
-                                }));
+                                obj.draw_stroke(pressure);
                             }
                         }
                         _ => {
@@ -1294,15 +1289,13 @@ impl BrushCanvas {
 
     fn setup_motion_controller(&self) {
         let motion = gtk::EventControllerMotion::new();
+        let weak_self = self.downgrade();
 
-        motion.connect_motion(glib::clone!(
-            #[weak(rename_to = obj)]
-            self,
-            move |_, x, y| {
+        motion.connect_motion(move |_, x, y| {
+            if let Some(obj) = weak_self.upgrade() {
                 obj.imp().mouse_pos.set((x as f32, y as f32));
             }
-        ));
-
+        });
         self.add_controller(motion);
     }
 
@@ -1377,23 +1370,16 @@ impl BrushCanvas {
     fn clear_layer(&self) {
         let mut project = self.imp().project.borrow_mut();
 
-        if let Some(acive_id) = self.imp().active_layer.get()
-            && let Some(layer) = project.find_layer_mut(acive_id)
-        {
+        if let Some(acive_id) = self.imp().active_layer.get() && let Some(layer) = project.find_layer_mut(acive_id) {
             layer.clear();
             layer.set_dirty(true);
-            layer.set_dirty_rect(Some(Rect {
-                x: 0,
-                y: 0,
-                w: layer.width() as i32,
-                h: layer.height() as i32,
-            }));
+            layer.set_dirty_rect(Some(Rect { x: 0, y:0, w: layer.width() as i32, h: layer.height() as i32}));
         }
 
         self.imp().canvas.queue_draw();
     }
 
-    async fn draw_stroke(&self, pressure: f64) {
+    fn draw_stroke(&self, pressure: f64) {
         let mut project = self.imp().project.borrow_mut();
         let state = self.imp().editor_state.get().unwrap().borrow();
 
@@ -1710,11 +1696,7 @@ impl CanvasAction {
                         c.clear_layer();
                     });
 
-                    klass.add_binding_action(
-                        gdk::Key::Delete,
-                        gdk::ModifierType::NO_MODIFIER_MASK,
-                        &action,
-                    );
+                    klass.add_binding_action(gdk::Key::Delete, gdk::ModifierType::NO_MODIFIER_MASK, &action);
                 }
                 CanvasAction::MoveLayerUp => {
                     klass.install_action(&action, None, |c, _, _| {
