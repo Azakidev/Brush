@@ -61,10 +61,12 @@ use crate::{
     },
 };
 use strum::IntoEnumIterator;
+use std::time::Duration;
 
 mod imp {
 
-    use std::time::Duration;
+
+    use std::sync::{Arc, RwLock};
 
     use super::*;
 
@@ -95,7 +97,7 @@ mod imp {
         pub mouse_pos: Cell<(f32, f32)>,
 
         // Stroke handling
-        pub stroke_mask: RefCell<Vec<u8>>,
+        pub stroke_mask: Arc<RwLock<Vec<u8>>>,
         pub last_position: Cell<(f32, f32)>,
         pub last_pressure: Cell<f64>,
         // Flags
@@ -1397,7 +1399,7 @@ impl BrushCanvas {
         let mut project = self.imp().project.borrow_mut();
         let state = self.imp().editor_state.get().unwrap().borrow();
 
-        let mut mask = self.imp().stroke_mask.borrow_mut();
+        let mask = &self.imp().stroke_mask;
 
         // Brush parameters
         let base_size = state.brush_size.borrow();
@@ -1442,7 +1444,7 @@ impl BrushCanvas {
                         dynamic_size as i32,
                         color.convert(),
                         *erase_mode,
-                        &mut mask,
+                        mask,
                     );
                 }
             }
@@ -1455,8 +1457,8 @@ impl BrushCanvas {
         let project = self.imp().project.borrow();
         let size = project.width * project.height;
 
-        let mask: Vec<u8> = vec![0; size as usize];
-        self.imp().stroke_mask.replace(mask);
+        let mut mask = self.imp().stroke_mask.write().unwrap();
+        *mask = vec![0; size as usize];
     }
 }
 
