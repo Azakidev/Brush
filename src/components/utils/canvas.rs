@@ -55,7 +55,7 @@ pub async fn draw_stroke(
     let lp = screen_to_canvas(&project, last_point, screen, s_pos, zoom, rotation);
 
     let interpolation_factor = if last_pressure < 0.3 {
-        (0.1 * (3. * last_pressure)).clamp(0.001, 0.1)
+        (0.1 * (3. * last_pressure)).clamp(0.05, 0.1)
     } else {
         0.1
     };
@@ -79,10 +79,9 @@ pub async fn draw_stroke(
 
             let p_len = points.len();
 
-            for point in points {
-                let (x, y, p) = point;
+            for (x, y, p) in points {
                 let dynamic_size = (*base_size as f64 * p).clamp(1f64, 1000f64);
-                let should_par = dynamic_size > 150. || p_len > 15;
+                let should_par = dynamic_size > 150. || p_len > 10;
 
                 layer.draw_brush_dab(
                     &mut mask,
@@ -154,3 +153,4 @@ fn interpolate_stroke(
     }
     points
 }
+

@@ -35,6 +35,7 @@ use std::{
     path::Path,
     rc::Rc,
     sync::{Arc, RwLock},
+    time::Instant,
 };
 use uuid::Uuid;
 
@@ -214,9 +215,9 @@ mod imp {
                     let Some(obj) = weak_self.upgrade() else {
                         return glib::Propagation::Proceed;
                     };
-
+                    let s = Instant::now();
                     render_pass(&obj.obj(), area);
-
+                    println!("Render in {:?}", s.elapsed());
                     glib::Propagation::Stop
                 });
 
