@@ -19,7 +19,6 @@
  */
 
 use adw::{prelude::*, subclass::prelude::*};
-use color::{AlphaColor, Oklab};
 use glow::{Context, NativeVertexArray};
 use gtk::{
     gdk,
@@ -44,11 +43,14 @@ use crate::{
         editor::EditorAction,
         layer_item::BrushLayerItem,
         utils::{
-            canvas::draw_stroke, editor_state::BrushEditorState, renderer::{
+            canvas::draw_stroke,
+            editor_state::BrushEditorState,
+            renderer::{
                 buffer::LayerBuffer,
                 render::{render_pass, setup_gl},
                 shader_manager::ShaderManager,
-            }, tools::BrushTool
+            },
+            tools::BrushTool,
         },
     },
     data::{
@@ -1090,6 +1092,8 @@ impl BrushCanvas {
             #[weak(rename_to = obj)]
             self,
             move |gesture, _, _x, _y| {
+                obj.clear_mask();
+
                 if let Some(state) = obj.imp().editor_state.get() {
                     let mask = obj.imp().stroke_mask.clone();
 
@@ -1175,7 +1179,6 @@ impl BrushCanvas {
                     match *tool {
                         BrushTool::Move => {} // NO OP
                         BrushTool::Brush => {
-                            obj.clear_mask();
                             obj.update_layer();
                         }
                         _ => {
@@ -1240,6 +1243,8 @@ impl BrushCanvas {
                     match *tool {
                         BrushTool::Move => {} // No op
                         BrushTool::Brush => {
+                            obj.clear_mask();
+
                             obj.imp().last_position.replace(obj.imp().mouse_pos.get());
                             if let Some(event) = gesture.last_event(None) {
                                 let pressure = event
@@ -1349,7 +1354,6 @@ impl BrushCanvas {
                     match *tool {
                         BrushTool::Move => {} // No-op
                         BrushTool::Brush => {
-                            obj.clear_mask();
                             obj.update_layer();
                         }
                         _ => {
@@ -1428,7 +1432,6 @@ impl BrushCanvas {
                 h: layer.height() as i32,
             }));
         }
-
     }
 
     fn clear_layer(&self) {
@@ -1880,3 +1883,4 @@ impl CanvasAction {
         }
     }
 }
+
