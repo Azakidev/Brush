@@ -20,9 +20,8 @@
 
 use std::{collections::HashMap, num::NonZero};
 
-use adw::subclass::prelude::ObjectSubclassIsExt;
+use adw::{glib, subclass::prelude::ObjectSubclassIsExt};
 use glow::{HasContext, NativeFramebuffer, NativeVertexArray};
-use gtk::{glib, prelude::WidgetExt};
 use uuid::Uuid;
 
 use crate::{
@@ -69,44 +68,34 @@ pub fn setup_gl(gl: &glow::Context) -> Option<(ShaderManager, NativeVertexArray)
     }
 }
 
-pub fn render_pass(canvas: &BrushCanvas, area: &gtk::GLArea) -> glib::Propagation {
-    let imp = canvas.imp();
-    let mut project = imp.project.borrow_mut();
-
-    // OpenGL Context
-    let Some(gl) = imp.gl_context.get() else {
-        return glib::Propagation::Proceed;
-    };
-    let Some(shaders) = imp.gl_shader_manager.get() else {
-        return glib::Propagation::Proceed;
-    };
-    let Some(vao) = imp.gl_vao.get() else {
-        return glib::Propagation::Proceed;
-    };
-
-    let mut shaders = shaders.borrow_mut();
-    let mut cache = imp.buffer_cache.borrow_mut();
-
-    // Viewport parameters
-    let (win_w, win_h) = (area.width() as f32, area.height() as f32);
+pub fn render_pass(
+    gl: &glow::Context,
+    vao: NativeVertexArray,
+    root_fbo: &LayerBuffer,
+    cache: &mut HashMap<Uuid, LayerBuffer>,
+    shaders: &mut ShaderManager,
+    project: &mut BrushProject,
+    (win_w, win_h): (f32, f32),
+    (pos_x, pos_y): (f64, f64),
+    zoom: f32,
+    rotation: f32,
+) -> glib::Propagation {
     let (pw, ph) = (project.width as i32, project.height as i32);
-    let zoom = imp.zoom.get();
 
     unsafe {
         use glow::HasContext;
 
         // Cleanup deleted buffers
-        clean_unused_buffers(gl, &mut cache, &project);
+        clean_unused_buffers(gl, cache, &project);
 
         // Save default FBO
         let default_fbo_id = gl.get_parameter_i32(glow::FRAMEBUFFER_BINDING) as u32;
         let default_fbo =
             NativeFramebuffer(NonZero::new(default_fbo_id).expect("default_fbo shouldn't be 0"));
 
-        gl.bind_vertex_array(Some(*vao));
+        gl.bind_vertex_array(Some(vao));
 
         // Create root FBO and clear it
-        let root_fbo = get_or_create_root_buffer(gl, canvas, &project);
 
         gl.bind_framebuffer(glow::FRAMEBUFFER, Some(root_fbo.framebuffer));
         gl.viewport(0, 0, pw, ph);
@@ -122,12 +111,12 @@ pub fn render_pass(canvas: &BrushCanvas, area: &gtk::GLArea) -> glib::Propagatio
 
         render_layer_tree(
             gl,
-            &mut shaders,
+            shaders,
             root_fbo.framebuffer,
             &root_mvp,
             (pw, ph),
             &mut project.layers,
-            &mut cache,
+            cache,
         );
 
         // Composite to camera
@@ -139,19 +128,20 @@ pub fn render_pass(canvas: &BrushCanvas, area: &gtk::GLArea) -> glib::Propagatio
         gl.disable(glow::SCISSOR_TEST);
         gl.disable(glow::DEPTH_TEST);
 
-        let camera_mvp = calculate_global_mvp(canvas, area, &project);
+        let camera_mvp =
+            calculate_global_mvp(&project, (win_w, win_h), (pos_x, pos_y), zoom, rotation);
 
         // Background
         draw_checkerboard(
             gl,
-            &mut shaders,
+            shaders,
             project.width as f32,
             project.height as f32,
             zoom,
             &camera_mvp,
         );
 
-        composite_root_buffer(gl, root_fbo, &mut shaders, &camera_mvp);
+        composite_root_buffer(gl, root_fbo, shaders, &camera_mvp);
 
         // Clean up state
         gl.disable(glow::BLEND);
@@ -331,7 +321,7 @@ pub fn get_or_create_buffer(
     *buffer
 }
 
-pub unsafe fn composite_buffer(
+unsafe fn composite_buffer(
     gl: &glow::Context,
     buffer: &LayerBuffer,
     layer: &Layer,
@@ -384,7 +374,7 @@ pub unsafe fn composite_buffer(
     }
 }
 
-pub unsafe fn composite_root_buffer(
+unsafe fn composite_root_buffer(
     gl: &glow::Context,
     buffer: &LayerBuffer,
     shaders: &mut ShaderManager,
@@ -433,31 +423,28 @@ pub unsafe fn composite_root_buffer(
 }
 
 fn calculate_global_mvp(
-    canvas: &BrushCanvas,
-    area: &gtk::GLArea,
     project: &BrushProject,
+    (win_w, win_h): (f32, f32),
+    (pos_x, pos_y): (f64, f64),
+    zoom: f32,
+    rotation: f32,
 ) -> glam::Mat4 {
-    let imp = canvas.imp();
-
-    let (win_w, win_h) = (area.width() as f32, area.height() as f32);
     let (canvas_w, canvas_h) = (project.width as f32, project.height as f32);
-
-    let (pos_x, pos_y) = imp.position.get();
-    let zoom = imp.zoom.get();
-    let rotation = imp.rotation.get();
 
     let projection = glam::Mat4::orthographic_lh(0.0, win_w, win_h, 0.0, -1.0, 1.0);
 
-    let view =
-        glam::Mat4::from_translation(glam::vec3(win_w / 2.0 + pos_x as f32, win_h / 2.0 + pos_y as f32, 0.0))
-            * glam::Mat4::from_rotation_z(rotation)
-            * glam::Mat4::from_scale(glam::vec3(zoom, zoom, 1.0))
-            * glam::Mat4::from_translation(glam::vec3(-canvas_w / 2.0, -canvas_h / 2.0, 0.0));
+    let view = glam::Mat4::from_translation(glam::vec3(
+        win_w / 2.0 + pos_x as f32,
+        win_h / 2.0 + pos_y as f32,
+        0.0,
+    )) * glam::Mat4::from_rotation_z(rotation)
+        * glam::Mat4::from_scale(glam::vec3(zoom, zoom, 1.0))
+        * glam::Mat4::from_translation(glam::vec3(-canvas_w / 2.0, -canvas_h / 2.0, 0.0));
 
     projection * view
 }
 
-pub unsafe fn draw_checkerboard(
+unsafe fn draw_checkerboard(
     gl: &glow::Context,
     shaders: &mut ShaderManager,
     canvas_w: f32,
@@ -491,7 +478,7 @@ pub unsafe fn draw_checkerboard(
     }
 }
 
-unsafe fn get_or_create_root_buffer<'a>(
+pub unsafe fn get_or_create_root_buffer<'a>(
     gl: &glow::Context,
     canvas: &'a BrushCanvas,
     project: &BrushProject,

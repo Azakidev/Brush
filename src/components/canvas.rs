@@ -68,6 +68,8 @@ mod imp {
 
     use std::time::Duration;
 
+    use crate::components::utils::renderer::render::get_or_create_root_buffer;
+
     use super::*;
 
     #[allow(dead_code)]
@@ -202,6 +204,8 @@ mod imp {
                         let _ = imp.gl_lib.set(gl_lib);
 
                         let gl = imp.gl_context.get().unwrap();
+                        let project = imp.project.borrow_mut();
+                        let _root_fbo = unsafe { get_or_create_root_buffer(gl, &obj, &project) };
 
                         if let Some((shader_manager, vao)) = setup_gl(gl) {
                             let _ = imp.gl_shader_manager.set(RefCell::new(shader_manager));
@@ -215,9 +219,38 @@ mod imp {
                     let Some(obj) = weak_self.upgrade() else {
                         return glib::Propagation::Proceed;
                     };
+                    let win = (area.width() as f32, area.height() as f32);
+
+                    let obj = obj.obj();
+                    let imp = obj.imp();
+                    let mut project = imp.project.borrow_mut();
+                    let mut cache = imp.buffer_cache.borrow_mut();
+
+                    let gl = imp.gl_context.get().unwrap();
+                    let shaders = imp.gl_shader_manager.get().unwrap();
+                    let vao = imp.gl_vao.get().unwrap();
+                    let root_fbo = unsafe { get_or_create_root_buffer(gl, &obj, &project) };
+
+                    let mut shaders = shaders.borrow_mut();
+                    let zoom = imp.zoom.get();
+                    let rotation = imp.rotation.get();
+                    let position = imp.position.get();
+
                     let s = Instant::now();
-                    render_pass(&obj.obj(), area);
+                    render_pass(
+                        gl,
+                        *vao,
+                        root_fbo,
+                        &mut cache,
+                        &mut shaders,
+                        &mut project,
+                        win,
+                        position,
+                        zoom,
+                        rotation,
+                    );
                     println!("Render in {:?}", s.elapsed());
+
                     glib::Propagation::Stop
                 });
 
@@ -1884,4 +1917,3 @@ impl CanvasAction {
         }
     }
 }
-
