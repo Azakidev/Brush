@@ -21,8 +21,8 @@
 // Data models
 pub mod editor_state;
 // Utilities
+pub mod canvas;
 pub mod color;
 pub mod tools;
-pub mod canvas;
 // Editor
 pub mod renderer;

@@ -32,7 +32,7 @@ const OKLAB_TO_SRG: &str = include_str!("./glsl/oklab2srgb.glsl");
 pub struct ShaderManager {
     pub background: ShaderProgram,
     pub layer: ShaderProgram,
-    pub oklab2srgb: ShaderProgram
+    pub oklab2srgb: ShaderProgram,
 }
 
 impl ShaderManager {

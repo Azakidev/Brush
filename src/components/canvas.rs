@@ -1106,8 +1106,8 @@ impl BrushCanvas {
                     let dx = center_x - old_x;
                     let dy = center_y - old_y;
 
-                    let new_x = canvas_old_x + dx * zoom as f64;
-                    let new_y = canvas_old_y + dy * zoom as f64;
+                    let new_x = canvas_old_x + dx * zoom;
+                    let new_y = canvas_old_y + dy * zoom;
 
                     obj.move_to(new_x, new_y);
                 }

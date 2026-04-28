@@ -44,7 +44,7 @@ impl Rect {
             h: y2 - y1,
         }
     }
-    
+
     // Extend the rectangle to include a specific point
     pub fn extend_pt(&self, x: i32, y: i32) -> Self {
         let x1 = self.x.min(x);

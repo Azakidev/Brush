@@ -27,8 +27,8 @@ use gtk::{
     TemplateChild,
     glib::{self, clone},
 };
-use strum::VariantNames;
 use std::{cell::Cell, rc::Rc};
+use strum::VariantNames;
 
 mod imp {
 

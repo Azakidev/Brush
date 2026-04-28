@@ -86,7 +86,7 @@ pub fn render_pass(
         use glow::HasContext;
 
         // Cleanup deleted buffers
-        clean_unused_buffers(gl, cache, &project);
+        clean_unused_buffers(gl, cache, project);
 
         // Save default FBO
         let default_fbo_id = gl.get_parameter_i32(glow::FRAMEBUFFER_BINDING) as u32;
@@ -129,7 +129,7 @@ pub fn render_pass(
         gl.disable(glow::DEPTH_TEST);
 
         let camera_mvp =
-            calculate_global_mvp(&project, (win_w, win_h), (pos_x, pos_y), zoom, rotation);
+            calculate_global_mvp(project, (win_w, win_h), (pos_x, pos_y), zoom, rotation);
 
         // Background
         draw_checkerboard(

@@ -51,8 +51,8 @@ pub async fn draw_stroke(
     let oklab: AlphaColor<Oklab> = color.convert();
 
     // Brush coordinates
-    let cp = screen_to_canvas(&project, current_point, screen, s_pos, zoom, rotation);
-    let lp = screen_to_canvas(&project, last_point, screen, s_pos, zoom, rotation);
+    let cp = screen_to_canvas(project, current_point, screen, s_pos, zoom, rotation);
+    let lp = screen_to_canvas(project, last_point, screen, s_pos, zoom, rotation);
 
     let interpolation_factor = if last_pressure < 0.3 {
         (0.1 * (3. * last_pressure)).clamp(0.05, 0.1)
@@ -153,4 +153,3 @@ fn interpolate_stroke(
     }
     points
 }
-
