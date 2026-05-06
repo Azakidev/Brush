@@ -31,7 +31,7 @@ use std::{
     cell::{Cell, OnceCell, RefCell},
     collections::HashMap,
     f32::consts::PI,
-    ops::{Deref, Sub},
+    ops::Deref,
     path::Path,
     rc::Rc,
     sync::{Arc, RwLock},
@@ -48,11 +48,12 @@ use crate::{
             editor_state::BrushEditorState,
             renderer::{
                 buffer::LayerBuffer,
-                render::{render_pass, setup_gl},
+                render::{get_or_create_root_buffer, render_pass, setup_gl},
                 shader_manager::ShaderManager,
             },
             tools::BrushTool,
-        }, window::WindowActions,
+        },
+        window::WindowActions,
     },
     data::{
         blend_modes::BrushBlendMode,
@@ -62,14 +63,10 @@ use crate::{
         rect::Rect,
     },
 };
+use std::time::Duration;
 use strum::IntoEnumIterator;
 
 mod imp {
-
-    use std::time::Duration;
-
-    use crate::components::utils::renderer::render::get_or_create_root_buffer;
-
     use super::*;
 
     #[allow(dead_code)]
@@ -723,12 +720,11 @@ impl BrushCanvas {
         self.imp().canvas.queue_draw();
     }
 
-    fn rename_layer(&self, uuid: Uuid, new_name: String) {
+    fn rename_layer(&self, uuid: Uuid, new_name: String, cache: &mut HashMap<Uuid, WeakRef<BrushLayerItem>>) {
         let mut project = self.imp().project.borrow_mut();
-        let mut widget_cache = self.imp().layer_widget_cache.borrow_mut();
         project.rename_layer(uuid, new_name);
 
-        project.remove_stale_widgets(uuid, &mut widget_cache);
+        project.remove_stale_widgets(uuid, cache);
     }
 
     fn set_layer_opacity(&self, opacity: f32) {
@@ -877,7 +873,7 @@ impl BrushCanvas {
                         .unwrap();
 
                     let feedback_loc = loc.clone();
-                    
+
                     let result = gtk::gio::spawn_blocking(move || {
                         let path = Path::new(loc.as_str());
                         if loc.as_str().contains(".bsh") {
@@ -952,10 +948,8 @@ impl BrushCanvas {
             // TODO: The actual toasts
             Ok(_) => {
                 if let Some(loc) = location {
-                    let _ = self.activate_action(
-                        &WindowActions::ShowToast, 
-                        Some(&loc.to_variant())
-                        );
+                    let _ =
+                        self.activate_action(&WindowActions::ShowToast, Some(&loc.to_variant()));
                 }
             }
             Err(e) => {
@@ -1699,33 +1693,35 @@ impl CanvasAction {
     fn init_actions(klass: &mut <imp::BrushCanvas as ObjectSubclass>::Class) {
         for action in Self::iter() {
             match action {
-                CanvasAction::NewPixel => {
+                Self::NewPixel => {
                     klass.install_action(&action, None, |c, _, _| {
                         c.new_pixel_layer();
                     });
                 }
-                CanvasAction::NewGroup => {
+                Self::NewGroup => {
                     klass.install_action(&action, None, |c, _, _| {
                         c.new_group_layer();
                     });
                 }
-                CanvasAction::RenameLayer => {
-                    klass.install_action(&action, Some(VariantTy::STRING), move |c, _, arg| {
-                        if let Some(var) = arg {
-                            let value = var.to_string(); // 'Name'
-                            let name = value.get(1..value.len().sub(1)).unwrap(); // Remove quotes
-                            if let Some(active_layer) = c.imp().active_layer.get() {
-                                c.rename_layer(active_layer, name.to_string());
-                            }
+                Self::RenameLayer => {
+                    klass.install_action(&action, None, move |c, _, _| {
+                        let mut cache = c.imp().layer_widget_cache.borrow_mut();
+
+                        if let Some(active) = c.imp().active_layer.get()
+                            && let Some(widget) = cache.get(&active)
+                            && let Some(item) = widget.upgrade()
+                        {
+                            let name = item.imp().rename_entry.text().to_string();
+                            c.rename_layer(active, name, &mut cache);
                         }
                     });
                 }
-                CanvasAction::DeleteLayer => {
+                Self::DeleteLayer => {
                     klass.install_action(&action, None, |c, _, _| {
                         c.remove_layer();
                     });
                 }
-                CanvasAction::ClearLayer => {
+                Self::ClearLayer => {
                     klass.install_action(&action, None, |c, _, _| {
                         c.clear_layer();
                     });
@@ -1736,18 +1732,18 @@ impl CanvasAction {
                         &action,
                     );
                 }
-                CanvasAction::MoveLayerUp => {
+                Self::MoveLayerUp => {
                     klass.install_action(&action, None, |c, _, _| {
                         c.move_layer_up();
                     });
                 }
-                CanvasAction::MoveLayerDown => {
+                Self::MoveLayerDown => {
                     klass.install_action(&action, None, |c, _, _| {
                         c.move_layer_down();
                     });
                 }
                 // Project handling
-                CanvasAction::SaveProject => {
+                Self::SaveProject => {
                     klass.install_action(&action, None, |c, _, _| {
                         let project = c.imp().project.borrow().clone();
                         c.save_project(project, None);
@@ -1755,7 +1751,7 @@ impl CanvasAction {
 
                     klass.add_binding_action(gdk::Key::S, gdk::ModifierType::CONTROL_MASK, &action);
                 }
-                CanvasAction::SaveProjectAs => {
+                Self::SaveProjectAs => {
                     klass.install_action(&action, None, |c, _, _| {
                         let project = c.imp().project.borrow().clone();
                         c.save_project_as(project, true);
@@ -1767,7 +1763,7 @@ impl CanvasAction {
                         &action,
                     );
                 }
-                CanvasAction::ExportProjectAs => {
+                Self::ExportProjectAs => {
                     klass.install_action(&action, None, |c, _, _| {
                         let project = c.imp().project.borrow().clone();
                         c.save_project_as(project, false);
@@ -1780,7 +1776,7 @@ impl CanvasAction {
                     );
                 }
                 // Viewport control
-                CanvasAction::ZoomIn => {
+                Self::ZoomIn => {
                     klass.install_action(&action, None, |c, _, _| {
                         c.zoom_by(0.05f32);
                     });
@@ -1797,7 +1793,7 @@ impl CanvasAction {
                         &action,
                     );
                 }
-                CanvasAction::ZoomOut => {
+                Self::ZoomOut => {
                     klass.install_action(&action, None, move |c, _, _| {
                         c.zoom_by(-0.05f32);
                     });
@@ -1808,7 +1804,7 @@ impl CanvasAction {
                         &action,
                     );
                 }
-                CanvasAction::ZoomToFit => {
+                Self::ZoomToFit => {
                     klass.install_action(&action, None, move |c, _, _| {
                         c.zoom_to_fit();
                     });
@@ -1819,7 +1815,7 @@ impl CanvasAction {
                         &action,
                     );
                 }
-                CanvasAction::PanUp => {
+                Self::PanUp => {
                     klass.install_action(&action, None, move |c, _, _| {
                         c.move_by(0., 60.);
                     });
@@ -1830,7 +1826,7 @@ impl CanvasAction {
                         &action,
                     );
                 }
-                CanvasAction::PanDown => {
+                Self::PanDown => {
                     klass.install_action(&action, None, move |c, _, _| {
                         c.move_by(0., -60.);
                     });
@@ -1841,7 +1837,7 @@ impl CanvasAction {
                         &action,
                     );
                 }
-                CanvasAction::PanLeft => {
+                Self::PanLeft => {
                     klass.install_action(&action, None, move |c, _, _| {
                         c.move_by(60., 0.);
                     });
@@ -1852,7 +1848,7 @@ impl CanvasAction {
                         &action,
                     );
                 }
-                CanvasAction::PanRight => {
+                Self::PanRight => {
                     klass.install_action(&action, None, move |c, _, _| {
                         c.move_by(-60., 0.);
                     });
@@ -1863,7 +1859,7 @@ impl CanvasAction {
                         &action,
                     );
                 }
-                CanvasAction::RotateCW => {
+                Self::RotateCW => {
                     klass.install_action(&action, None, move |c, _, _| {
                         c.rotate_by(PI / 5f32);
                     });
@@ -1874,7 +1870,7 @@ impl CanvasAction {
                         &action,
                     );
                 }
-                CanvasAction::RotateCCW => {
+                Self::RotateCCW => {
                     klass.install_action(&action, None, move |c, _, _| {
                         c.rotate_by(PI / -5f32);
                     });
@@ -1885,7 +1881,7 @@ impl CanvasAction {
                         &action,
                     );
                 }
-                CanvasAction::RotateTo0 => {
+                Self::RotateTo0 => {
                     klass.install_action(&action, None, move |c, _, _| {
                         c.rotate_to(0f32);
                     });
@@ -1896,7 +1892,7 @@ impl CanvasAction {
                         &action,
                     );
                 }
-                CanvasAction::SetLayerOpacity => {
+                Self::SetLayerOpacity => {
                     klass.install_action(&action, Some(VariantTy::DOUBLE), |c, _, arg| {
                         if let Some(var) = arg
                             && let Some(val) = var.get::<f64>()
@@ -1905,7 +1901,7 @@ impl CanvasAction {
                         }
                     });
                 }
-                CanvasAction::SetLayerBlendMode => {
+                Self::SetLayerBlendMode => {
                     klass.install_action(&action, Some(VariantTy::UINT32), |c, _, arg| {
                         if let Some(var) = arg
                             && let Some(val) = var.get::<u32>()
@@ -1916,27 +1912,27 @@ impl CanvasAction {
                         }
                     });
                 }
-                CanvasAction::ToggleVisible => {
+                Self::ToggleVisible => {
                     klass.install_action(&action, None, |c, _, _| {
                         c.toggle_visible();
                     });
                 }
-                CanvasAction::ToggleLock => {
+                Self::ToggleLock => {
                     klass.install_action(&action, None, |c, _, _| {
                         c.toggle_lock();
                     });
                 }
-                CanvasAction::ToggleAlphaClip => {
+                Self::ToggleAlphaClip => {
                     klass.install_action(&action, None, |c, _, _| {
                         c.toggle_alpha_clip();
                     });
                 }
-                CanvasAction::ToggleAlphaLock => {
+                Self::ToggleAlphaLock => {
                     klass.install_action(&action, None, |c, _, _| {
                         c.toggle_alpha_lock();
                     });
                 }
-                CanvasAction::TogglePassthrough => {
+                Self::TogglePassthrough => {
                     klass.install_action(&action, None, |c, _, _| {
                         c.toggle_passthrough();
                     });

@@ -41,6 +41,8 @@ mod imp {
         #[template_child]
         pub tree: TemplateChild<gtk::Box>,
         #[template_child]
+        pub scroller: TemplateChild<gtk::ScrolledWindow>,
+        #[template_child]
         pub layer_opacity: TemplateChild<gtk::Scale>,
         #[template_child]
         pub blend_mode: TemplateChild<gtk::DropDown>,

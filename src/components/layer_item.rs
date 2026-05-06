@@ -27,7 +27,7 @@ use gtk::{
 use std::{cell::OnceCell, collections::HashMap, ops::Mul};
 use uuid::Uuid;
 
-use crate::data::{blend_modes::BrushBlendMode, layer::Layer};
+use crate::{components::{editor::EditorAction}, data::{blend_modes::BrushBlendMode, layer::Layer}};
 
 mod imp {
 
@@ -36,6 +36,8 @@ mod imp {
     #[derive(Debug, Default, gtk::CompositeTemplate)]
     #[template(resource = "/art/FatDawlf/Brush/layer-item.ui")]
     pub struct BrushLayerItem {
+        #[template_child]
+        pub name_stack: TemplateChild<adw::ViewStack>,
         #[template_child]
         pub container: TemplateChild<adw::Bin>,
         // Information
@@ -47,6 +49,8 @@ mod imp {
         pub blend_mode: TemplateChild<gtk::Label>,
         #[template_child]
         pub icon: TemplateChild<gtk::Image>,
+        #[template_child]
+        pub rename_entry: TemplateChild<gtk::Entry>,
 
         // Children
         #[template_child]
@@ -102,6 +106,7 @@ mod imp {
             let obj = self.obj();
 
             obj.setup_click();
+            obj.setup_confirm_rename();
             obj.bind_revealer();
         }
     }
@@ -312,5 +317,12 @@ impl BrushLayerItem {
                 .passthrough_toggle
                 .set_icon_name("arrow-pointing-at-line-down-symbolic");
         }
+    }
+
+    fn setup_confirm_rename(&self) {
+        self.imp().rename_entry.connect_activate(|e| {
+            let _ = e.activate_action(&EditorAction::ReleaseFocus, None);
+            let _ = e.activate_action(&EditorAction::RenameLayer, None);
+        });
     }
 }

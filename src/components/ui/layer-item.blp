@@ -2,163 +2,179 @@ using Gtk 4.0;
 using Adw 1;
 
 template $BrushLayerItem: Box {
-  orientation: vertical;
-  hexpand: true;
+    orientation: vertical;
+    hexpand: true;
 
-  Adw.Bin container {
-    margin-top: 4;
-
-    styles [
-      "card",
-    ]
-
-    Box layer_info {
-      orientation: horizontal;
-      spacing: 4;
-      margin-end: 4;
-      margin-start: 4;
-      margin-top: 4;
-      margin-bottom: 4;
-
-      ToggleButton revealer_toggle {
-        active: true;
-        tooltip-text: _("Reveal chidren");
+    Adw.Bin container {
+        margin-top: 4;
 
         styles [
-          "flat",
+            "card",
         ]
 
-        Image icon {
-          pixel-size: 24;
+        Adw.ViewStack name_stack {
 
-          accessibility {
-            label: "Layer icon";
-          }
+            Adw.ViewStackPage content {
+                name: "content";
+
+                child: Box layer_info {
+                    orientation: horizontal;
+                    spacing: 4;
+                    margin-end: 4;
+                    margin-start: 4;
+                    margin-top: 4;
+                    margin-bottom: 4;
+
+                    ToggleButton revealer_toggle {
+                        active: true;
+                        tooltip-text: _("Reveal chidren");
+
+                        styles [
+                            "flat",
+                        ]
+
+                        Image icon {
+                            pixel-size: 24;
+
+                            accessibility {
+                                label: "Layer icon";
+                            }
+                        }
+                    }
+
+                    Box {
+                        hexpand: true;
+                        valign: center;
+                        orientation: vertical;
+
+                        Label layer_name {
+                            ellipsize: end;
+                            halign: start;
+
+                            styles [
+                                "layer_label",
+                            ]
+                        }
+
+                        Box {
+                            orientation: horizontal;
+
+                            Label opacity {
+                                ellipsize: end;
+                                halign: start;
+
+                                styles [
+                                    "dimmed",
+                                    "subtext",
+                                ]
+                            }
+
+                            Label blend_mode {
+                                ellipsize: end;
+                                halign: start;
+
+                                styles [
+                                    "dimmed",
+                                    "subtext",
+                                ]
+                            }
+                        }
+                    }
+
+                    Box toggles {
+                        halign: end;
+
+                        styles [
+                            "linked",
+                        ]
+
+                        ToggleButton visible_toggle {
+                            icon-name: "eye-outline-filled-symbolic";
+                            action-name: "editor.toggle-visible";
+                            tooltip-text: _("Visibility");
+
+                            styles [
+                                "flat",
+                                "compact",
+                            ]
+                        }
+
+                        ToggleButton lock_toggle {
+                            icon-name: "padlock2-open-symbolic";
+                            action-name: "editor.toggle-lock";
+                            tooltip-text: _("Lock editing");
+
+                            styles [
+                                "flat",
+                                "compact",
+                            ]
+                        }
+
+                        ToggleButton alpha_clip_toggle {
+                            icon-name: "opacity-symbolic";
+                            action-name: "editor.toggle-alpha-clip";
+                            tooltip-text: _("Alpha clip");
+
+                            styles [
+                                "flat",
+                                "compact",
+                            ]
+                        }
+
+                        ToggleButton alpha_lock_toggle {
+                            icon-name: "transparent-background-symbolic";
+                            action-name: "editor.toggle-alpha-lock";
+                            tooltip-text: _("Alpha lock");
+
+                            styles [
+                                "flat",
+                                "compact",
+                            ]
+                        }
+
+                        ToggleButton passthrough_toggle {
+                            icon-name: "arrow-pointing-at-line-down-symbolic";
+                            action-name: "editor.toggle-passthrough";
+                            tooltip-text: _("Passthrough children");
+
+                            styles [
+                                "flat",
+                                "compact",
+                            ]
+                        }
+                    }
+                };
+            }
+
+            Adw.ViewStackPage rename {
+                name: "rename";
+
+                child: Entry rename_entry {
+                    text: _("");
+                    // activate => $rename_layer();
+                };
+            }
         }
-      }
+    }
 
-      Box {
-        hexpand: true;
-        valign: center;
-        orientation: vertical;
-
-        Label layer_name {
-          ellipsize: end;
-          halign: start;
-
-          styles [
-            "layer_label",
-          ]
-        }
+    Gtk.Revealer children_revealer {
+        reveal-child: true;
+        transition-type: slide_down;
+        transition-duration: 150;
+        margin-start: 2;
 
         Box {
-          orientation: horizontal;
-
-          Label opacity {
-            ellipsize: end;
-            halign: start;
-
             styles [
-              "dimmed",
-              "subtext",
+                "layer_children",
             ]
-          }
 
-          Label blend_mode {
-            ellipsize: end;
-            halign: start;
+            Box filters {
+                orientation: vertical;
+            }
 
-            styles [
-              "dimmed",
-              "subtext",
-            ]
-          }
+            Box children {
+                orientation: vertical;
+            }
         }
-      }
-
-      Box toggles {
-        halign: end;
-
-        styles [
-          "linked",
-        ]
-
-        ToggleButton visible_toggle {
-          icon-name: "eye-outline-filled-symbolic";
-          action-name: "editor.toggle-visible";
-          tooltip-text: _("Visibility");
-
-          styles [
-            "flat",
-            "compact",
-          ]
-        }
-
-        ToggleButton lock_toggle {
-          icon-name: "padlock2-open-symbolic";
-          action-name: "editor.toggle-lock";
-          tooltip-text: _("Lock editing");
-
-          styles [
-            "flat",
-            "compact",
-          ]
-        }
-
-        ToggleButton alpha_clip_toggle {
-          icon-name: "opacity-symbolic";
-          action-name: "editor.toggle-alpha-clip";
-          tooltip-text: _("Alpha clip");
-
-          styles [
-            "flat",
-            "compact",
-          ]
-        }
-
-        ToggleButton alpha_lock_toggle {
-          icon-name: "transparent-background-symbolic";
-          action-name: "editor.toggle-alpha-lock";
-          tooltip-text: _("Alpha lock");
-
-          styles [
-            "flat",
-            "compact",
-          ]
-        }
-
-        ToggleButton passthrough_toggle {
-          icon-name: "arrow-pointing-at-line-down-symbolic";
-          action-name: "editor.toggle-passthrough";
-          tooltip-text: _("Passthrough children");
-
-          styles [
-            "flat",
-            "compact",
-          ]
-        }
-      }
     }
-  }
-
-  Gtk.Revealer children_revealer {
-    reveal-child: true;
-    transition-type: slide_down;
-    transition-duration: 150;
-    margin-start: 2;
-
-    Box {
-      styles [
-        "layer_children",
-      ]
-
-      Box filters {
-        orientation: vertical;
-      }
-
-      Box children {
-        orientation: vertical;
-      }
-    }
-  }
 }

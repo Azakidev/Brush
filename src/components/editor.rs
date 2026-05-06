@@ -29,6 +29,7 @@ use adw::{
     prelude::{BoxExt, GtkWindowExt, RangeExt, ToggleButtonExt, WidgetExt},
     subclass::prelude::*,
 };
+use gtk::prelude::EditableExt;
 use std::{
     cell::{Cell, RefCell},
     collections::HashMap,
@@ -575,8 +576,38 @@ impl BrushEditor {
         if let Some(root) = self.root()
             && let Some(window) = root.dynamic_cast_ref::<gtk::Window>()
         {
+            self.imp().layer_tree.imp().scroller.set_can_focus(false);
+
+            let cache = self.imp().layer_widget_cache.borrow();
+            if let Some(canvas) = self.current_page()
+                && let Some(active) = canvas.imp().active_layer.get()
+                && let Some(widget) = cache.get(&active)
+                && let Some(item) = widget.upgrade()
+            {
+                item.imp().name_stack.set_visible_child_name("content");
+            }
+
             window.set_focus(None::<&gtk::Widget>);
         };
+    }
+
+    fn start_layer_rename(&self) {
+        if let Some(canvas) = self.current_page() {
+            let cache = self.imp().layer_widget_cache.borrow();
+            let project = self.current_project();
+            let project = project.borrow();
+
+            if let Some(active) = canvas.imp().active_layer.get()
+                && let Some(layer) = project.find_layer(active)
+                && let Some(widget) = cache.get(&active)
+                && let Some(item) = widget.upgrade()
+            {
+                self.imp().layer_tree.imp().scroller.set_can_focus(true);
+                item.imp().rename_entry.set_text(layer.name());
+                item.imp().name_stack.set_visible_child_name("rename");
+                item.imp().rename_entry.grab_focus();
+            }
+        }
     }
 }
 
@@ -591,7 +622,7 @@ pub enum EditorAction {
     CloseTab,
     // Editor state changes
     #[strum(to_string = "editor.cancel")]
-    Cancel,
+    ReleaseFocus,
     #[strum(to_string = "editor.swap-colors")]
     SwapColors,
     #[strum(to_string = "editor.set-color")]
@@ -641,6 +672,10 @@ pub enum EditorAction {
     ToggleAlphaLock,
     #[strum(to_string = "editor.toggle-passthrough")]
     TogglePassthrough,
+    #[strum(to_string = "editor.start-layer-rename")]
+    StartRenameLayer,
+    #[strum(to_string = "editor.layer-rename")]
+    RenameLayer,
 }
 
 impl Deref for EditorAction {
@@ -703,7 +738,7 @@ impl EditorAction {
                         &action,
                     );
                 }
-                Self::Cancel => {
+                Self::ReleaseFocus => {
                     klass.install_action(&action, None, |e, _, _| {
                         e.release_focus();
                     });
@@ -951,6 +986,25 @@ impl EditorAction {
                     klass.install_action(&action, None, |e, _, _| {
                         if let Some(tab) = e.current_page() {
                             let _ = tab.activate_action(&CanvasAction::ToggleLock, None);
+                            e.sync_project(&tab);
+                        }
+                    });
+                }
+                Self::StartRenameLayer => {
+                    klass.install_action(&action, None, |e, _, _| {
+                        e.start_layer_rename();
+                    });
+
+                    klass.add_binding_action(
+                        gdk::Key::F2,
+                        gdk::ModifierType::NO_MODIFIER_MASK,
+                        &action,
+                    );
+                }
+                Self::RenameLayer => {
+                    klass.install_action(&action, None, |e, _, _| {
+                        if let Some(tab) = e.current_page() {
+                            let _ = tab.activate_action(&CanvasAction::RenameLayer, None);
                             e.sync_project(&tab);
                         }
                     });
