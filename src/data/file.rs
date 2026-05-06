@@ -70,6 +70,40 @@ pub fn save_project(path: &Path, project: BrushProject, preview: &[u8]) -> ZipRe
     Ok(())
 }
 
+pub fn save_image(path: &Path, project: BrushProject, img: &[u8]) -> ZipResult<()> {
+    let s = Instant::now();
+
+    let format = match path.extension().unwrap().to_str().unwrap() {
+        "png" => image::ImageFormat::Png,
+        "avif" => image::ImageFormat::Avif,
+        "jpeg" => image::ImageFormat::Jpeg,
+        "jpg" => image::ImageFormat::Jpeg,
+        "bmp" => image::ImageFormat::Bmp,
+        "exr" => image::ImageFormat::OpenExr,
+        "webp" => image::ImageFormat::WebP,
+        "gif" => image::ImageFormat::Gif,
+        "jif" => image::ImageFormat::Gif,
+        _ => image::ImageFormat::Png,
+    };
+
+    let result = image::save_buffer_with_format(
+        path,
+        img,
+        project.width,
+        project.height,
+        image::ColorType::Rgba8,
+        format,
+    );
+
+    if let Err(e) = result {
+        eprintln!("{}", e);
+        return Err(ZipError::FileNotFound);
+    }
+
+    println!("File saved in {:?}", s.elapsed());
+    Ok(())
+}
+
 fn open_structure(zip: &mut ZipArchive<File>) -> ZipResult<BrushProject> {
     let mut structure_file = match zip.by_name("meta.json") {
         Ok(f) => f,
@@ -122,7 +156,7 @@ fn save_preview(zip: &mut ZipWriter<File>, project: &BrushProject, data: &[u8]) 
                 .compression_method(zip::CompressionMethod::DEFLATE)
                 .unix_permissions(0o444);
 
-            zip.start_file("preview.png", options)?;
+            zip.start_file("preview", options)?;
             zip.write_all(&png.into_inner())?;
         }
         Err(e) => {
@@ -352,12 +386,21 @@ pub async fn request_open() -> ashpd::Result<Vec<PathBuf>> {
     Ok(paths)
 }
 
-pub async fn request_save() -> ashpd::Result<PathBuf> {
+pub async fn request_save(is_export: bool) -> ashpd::Result<PathBuf> {
+    let title = if is_export { "Export" } else { "Save" };
+
     let files = SelectedFiles::save_file()
-        .title("Save the project") // TODO:  i18n
+        .title(title) // TODO:  i18n
         .accept_label("Save") // TODO: i18n
         .modal(true)
         .filter(FileFilter::new("Brush Project").glob("*.bsh")) // TODO: i18n
+        .filter(FileFilter::new("PNG Image").glob("*.png")) // TODO: i18n
+        .filter(FileFilter::new("AVIF Image").glob("*.avif")) // TODO: i18n
+        .filter(FileFilter::new("JPEG Image").glob("*.jpg")) // TODO: i18n
+        .filter(FileFilter::new("Bitmap Image").glob("*.bmp")) // TODO: i18n
+        .filter(FileFilter::new("EXR Image").glob("*.exr")) // TODO: i18n
+        .filter(FileFilter::new("WebP Image").glob("*.webp")) // TODO: i18n
+        .filter(FileFilter::new("GIF Image").glob("*.gif")) // TODO: i18n
         .send()
         .await?
         .response()?;

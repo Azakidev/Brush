@@ -1,5 +1,5 @@
 [Thumbnailer Entry]
 TryExec=unzip
-Exec=sh -c "unzip -p %i preview.png > %o"
+Exec=sh -c "unzip -p %i preview > %o"
 MimeType=application/x-brush;
 

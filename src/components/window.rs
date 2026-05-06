@@ -19,7 +19,9 @@
  */
 
 use adw::{gdk, gio, glib, prelude::*, subclass::prelude::*};
-use std::ops::Deref;
+use gtk::glib::VariantTy;
+use std::ops::{Deref, Sub};
+use std::path::Path;
 use strum::IntoEnumIterator;
 
 use crate::components::editor::{BrushEditor, EditorAction};
@@ -153,6 +155,47 @@ impl BrushWindow {
         }
     }
 
+    fn show_toast(&self, loc: &str) {
+        let overlay = &self.imp().toast_overlay;
+        let path = Path::new(loc);
+
+        let open_dir = if loc.contains(".bsh") {
+            // Saved a project
+            if let Some(parent) = path.parent()
+                && parent.is_dir()
+            {
+                parent
+            } else {
+                path
+            }
+        } else {
+            // Saved an image
+            path
+        };
+
+        let toast = adw::Toast::builder()
+            .title("Saved successfully")
+            .button_label("Open")
+            .action_name(WindowActions::ToastOpen.to_string())
+            .action_target(&open_dir.to_variant())
+            .timeout(3)
+            .build();
+
+        overlay.add_toast(toast);
+    }
+
+    fn open_path(&self, path: &str) {
+        let file = gio::File::for_path(path);
+        let launcher = gtk::FileLauncher::new(Some(&file));
+
+        // Launch the file/folder using the default system handler
+        launcher.launch(gtk::Window::NONE, gio::Cancellable::NONE, |result| {
+            if let Err(e) = result {
+                eprintln!("Failed to open file: {}", e);
+            }
+        });
+    }
+
     pub fn open_file(&self, path: &str) {
         let tab_view = &self.imp().editor.imp().tab_view;
 
@@ -184,6 +227,10 @@ pub enum WindowActions {
     OpenEditor,
     #[strum(to_string = "win.should-close-editor")]
     CloseEditor,
+    #[strum(to_string = "win.show-toast")]
+    ShowToast,
+    #[strum(to_string = "win.open-toast")]
+    ToastOpen,
 }
 
 impl Deref for WindowActions {
@@ -223,6 +270,28 @@ impl WindowActions {
                         let tab_view = &win.imp().editor.imp().tab_view;
                         win.should_close_editor(tab_view.n_pages());
                     });
+                }
+                Self::ShowToast => {
+                    klass.install_action(&action, Some(VariantTy::STRING), |win, _, arg| {
+                        if let Some(var) = arg {
+                            let value = var.to_string(); // 'Path'
+                            let path = value.get(1..value.len().sub(1)).unwrap(); // Remove quotes
+                            win.show_toast(path);
+                        }
+                    });
+                }
+                Self::ToastOpen => {
+                    klass.install_action(
+                        &action,
+                        Some(VariantTy::new("ay").unwrap()),
+                        |win, _, arg| {
+                            if let Some(var) = arg {
+                                let value = var.to_string(); // "'b/home/...'"
+                                let path = value.get(2..value.len().sub(1)).unwrap(); // Trim
+                                win.open_path(path);
+                            }
+                        },
+                    );
                 }
             }
         }

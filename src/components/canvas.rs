@@ -52,11 +52,11 @@ use crate::{
                 shader_manager::ShaderManager,
             },
             tools::BrushTool,
-        },
+        }, window::WindowActions,
     },
     data::{
         blend_modes::BrushBlendMode,
-        file::{request_save, save_project},
+        file::{request_save, save_image, save_project},
         layer::Layer,
         project::BrushProject,
         rect::Rect,
@@ -861,10 +861,12 @@ impl BrushCanvas {
         imp.canvas.queue_draw();
     }
 
-    fn save_project(&self, project: BrushProject) {
+    fn save_project(&self, project: BrushProject, location: Option<String>) {
         let imp = self.imp();
 
-        if let Some(loc) = imp.file_location.borrow().clone() {
+        let save_loc = location.or(imp.file_location.borrow().clone());
+
+        if let Some(loc) = save_loc {
             // File string set
             glib::spawn_future_local(glib::clone!(
                 #[weak(rename_to = obj)]
@@ -874,13 +876,20 @@ impl BrushCanvas {
                         .get_composite(project.width as i32, project.height as i32)
                         .unwrap();
 
+                    let feedback_loc = loc.clone();
+                    
                     let result = gtk::gio::spawn_blocking(move || {
-                        save_project(Path::new(loc.as_str()), project, pixels.as_slice())
+                        let path = Path::new(loc.as_str());
+                        if loc.as_str().contains(".bsh") {
+                            save_project(path, project, pixels.as_slice())
+                        } else {
+                            save_image(path, project, pixels.as_slice())
+                        }
                     })
                     .await
                     .expect("Failed to finish save");
 
-                    obj.save_feedback(result);
+                    obj.save_feedback(result, Some(feedback_loc));
                 }
             ));
         } else {
@@ -897,18 +906,19 @@ impl BrushCanvas {
             #[strong]
             project,
             async move {
-                if let Ok(file) = request_save().await {
-                    if swap_to {
-                        let path = file.as_path().to_str().unwrap().to_owned();
-                        let new_name = file.as_path().file_name().unwrap().to_str().unwrap();
+                if let Ok(file) = request_save(!swap_to).await {
+                    let path = file.as_path().to_str().unwrap().to_owned();
+                    let new_name = file.as_path().file_name().unwrap().to_str().unwrap();
 
+                    if swap_to {
                         let _ = obj.activate_action(
                             &EditorAction::RenameTab,
                             Some(&new_name.to_variant()),
                         );
-                        obj.imp().file_location.replace(Some(path));
+                        obj.imp().file_location.replace(Some(path.clone()));
                     }
-                    obj.save_project(project);
+
+                    obj.save_project(project, Some(path));
                 }
             }
         ));
@@ -937,10 +947,17 @@ impl BrushCanvas {
     // Create and show a popup in the toast overlay via action
     // If OK, it should be a simple confirmation
     // If Err, it should be a toast with a simple error and a button to copy the error output
-    fn save_feedback(&self, result: Result<(), ZipError>) {
+    fn save_feedback(&self, result: Result<(), ZipError>, location: Option<String>) {
         match result {
             // TODO: The actual toasts
-            Ok(_) => {}
+            Ok(_) => {
+                if let Some(loc) = location {
+                    let _ = self.activate_action(
+                        &WindowActions::ShowToast, 
+                        Some(&loc.to_variant())
+                        );
+                }
+            }
             Err(e) => {
                 eprintln!("{e}");
             }
@@ -1733,7 +1750,7 @@ impl CanvasAction {
                 CanvasAction::SaveProject => {
                     klass.install_action(&action, None, |c, _, _| {
                         let project = c.imp().project.borrow().clone();
-                        c.save_project(project);
+                        c.save_project(project, None);
                     });
 
                     klass.add_binding_action(gdk::Key::S, gdk::ModifierType::CONTROL_MASK, &action);
@@ -1746,11 +1763,22 @@ impl CanvasAction {
 
                     klass.add_binding_action(
                         gdk::Key::S,
-                        gdk::ModifierType::SHIFT_MASK.intersection(gdk::ModifierType::CONTROL_MASK),
+                        gdk::ModifierType::SHIFT_MASK.union(gdk::ModifierType::CONTROL_MASK),
                         &action,
                     );
                 }
-                CanvasAction::ExportProjectAs => {}
+                CanvasAction::ExportProjectAs => {
+                    klass.install_action(&action, None, |c, _, _| {
+                        let project = c.imp().project.borrow().clone();
+                        c.save_project_as(project, false);
+                    });
+
+                    klass.add_binding_action(
+                        gdk::Key::E,
+                        gdk::ModifierType::SHIFT_MASK.union(gdk::ModifierType::CONTROL_MASK),
+                        &action,
+                    );
+                }
                 // Viewport control
                 CanvasAction::ZoomIn => {
                     klass.install_action(&action, None, |c, _, _| {
