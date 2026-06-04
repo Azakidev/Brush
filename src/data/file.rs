@@ -53,17 +53,13 @@ pub fn open_project(path: &Path) -> ZipResult<BrushProject> {
 pub fn save_project(path: &Path, project: BrushProject, preview: &[u8]) -> ZipResult<()> {
     let s = Instant::now();
     let mut zip = prepare_zip(path)?;
-    println!("Zip done");
     // Save the main project structure
     save_structure(&mut zip, &project)?;
-    println!("Structure done");
     // Walk through each layer and save it
     save_layers(&mut zip, &project.layers)?;
     save_refs(&mut zip, &project.references)?;
-    println!("Layers done");
     // Generate a preview
     save_preview(&mut zip, &project, preview)?;
-    println!("Preview done");
     // Commit the file
     zip.finish()?;
     println!("File saved in {:?}", s.elapsed());

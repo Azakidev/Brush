@@ -229,8 +229,6 @@ mod imp {
 
                     let win = (area.width() as f32, area.height() as f32);
 
-                    println!("Begin render pass");
-
                     render_pass(
                         gl,
                         *vao,
@@ -732,7 +730,6 @@ impl BrushCanvas {
             ));
         } else {
             // Location not set, prompt user
-            println!("File not saved yet, prompting");
             self.save_project_as(project, true);
         }
     }
