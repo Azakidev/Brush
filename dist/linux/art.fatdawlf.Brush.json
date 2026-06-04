@@ -1,5 +1,5 @@
 {
-    "id": "art.FatDawlf.Brush",
+    "id": "art.fatdawlf.Brush",
     "runtime": "org.gnome.Platform",
     "runtime-version": "50",
     "sdk": "org.gnome.Sdk",

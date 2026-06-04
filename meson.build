@@ -7,7 +7,7 @@ project('brush', 'rust',
 i18n = import('i18n')
 gnome = import('gnome')
 
-app_id = 'art.FatDawlf.Brush@0@'.format(get_option('app_id_suffix'))
+app_id = 'art.fatdawlf.Brush@0@'.format(get_option('app_id_suffix'))
 bin_name = 'brush'
 
 subdir('data')

@@ -9,7 +9,7 @@ conf.set('MIME_TYPES', ';'.join(mime_types) + ';')
 
 desktop_file = i18n.merge_file(
   input: configure_file(
-    input: 'art.FatDawlf.Brush.desktop.in.in',
+    input: 'art.fatdawlf.Brush.desktop.in.in',
     output: '@0@.desktop.in'.format(app_id),
     configuration: conf,
   ),
@@ -26,8 +26,8 @@ if desktop_utils.found()
 endif
 
 appstream_file = i18n.merge_file(
-  input: 'art.FatDawlf.Brush.metainfo.xml.in',
-  output: 'art.FatDawlf.Brush.metainfo.xml',
+  input: 'art.fatdawlf.Brush.metainfo.xml.in',
+  output: 'art.fatdawlf.Brush.metainfo.xml',
   po_dir: '../po',
   install: true,
   install_dir: get_option('datadir') / 'metainfo',
@@ -41,7 +41,7 @@ test(
 )
 
 install_data(
-  'art.FatDawlf.Brush.gschema.xml',
+  'art.fatdawlf.Brush.gschema.xml',
   install_dir: get_option('datadir') / 'glib-2.0' / 'schemas',
 )
 
@@ -53,7 +53,7 @@ test(
 )
 
 configure_file(
-input: 'art.FatDawlf.Brush.service.in',
+input: 'art.fatdawlf.Brush.service.in',
   output: '@0@.service'.format(app_id),
   configuration: conf,
   install_dir: get_option('datadir') / 'dbus-1' / 'services',
@@ -61,7 +61,7 @@ input: 'art.FatDawlf.Brush.service.in',
 
 # MIME type definition
 install_data(
-  'art.FatDawlf.Brush.xml',
+  'art.fatdawlf.Brush.xml',
   install_dir: get_option('datadir') / 'mime' / 'packages',
 )
 

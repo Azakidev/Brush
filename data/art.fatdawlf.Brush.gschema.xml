@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <schemalist gettext-domain="brush">
-	<schema id="art.FatDawlf.Brush" path="/art/FatDawlf/Brush/">
+	<schema id="art.fatdawlf.Brush" path="/art/fatdawlf/Brush/">
 	</schema>
 </schemalist>
