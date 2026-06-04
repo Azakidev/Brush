@@ -2,28 +2,17 @@
  *
  * Copyright 2026 FatDawlf
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
- *
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-use std::sync::{Arc, RwLock};
-
 use color::{AlphaColor, Oklab};
+use std::sync::{Arc, RwLock};
 use uuid::Uuid;
 
-use crate::{components::utils::editor_state::BrushEditorState, data::project::BrushProject};
+use crate::{
+    components::utils::{editor_state::BrushEditorState, renderer::shader_manager::ShaderManager},
+    data::project::BrushProject,
+};
 
 pub async fn draw_stroke(
     project: &mut BrushProject,
@@ -152,4 +141,117 @@ fn interpolate_stroke(
         traveled += step_size;
     }
     points
+}
+
+pub unsafe fn capture_oklab_to_srgb_png(
+    gl: &glow::Context,
+    root_fbo_texture: glow::Texture,
+    width: i32,
+    height: i32,
+    shader_manager: &mut ShaderManager, // Adjust based on your actual struct name
+) -> Option<Vec<u8>> {
+    unsafe {
+        use glow::HasContext;
+
+        let read_fbo = gl.create_framebuffer().ok()?;
+        let read_tex = gl.create_texture().ok()?;
+
+        gl.bind_texture(glow::TEXTURE_2D, Some(read_tex));
+        gl.tex_parameter_i32(
+            glow::TEXTURE_2D,
+            glow::TEXTURE_MIN_FILTER,
+            glow::LINEAR as i32,
+        );
+        gl.tex_parameter_i32(
+            glow::TEXTURE_2D,
+            glow::TEXTURE_MAG_FILTER,
+            glow::LINEAR as i32,
+        );
+        gl.tex_image_2d(
+            glow::TEXTURE_2D,
+            0,
+            glow::RGBA8 as i32,
+            width,
+            height,
+            0,
+            glow::RGBA,
+            glow::UNSIGNED_BYTE,
+            glow::PixelUnpackData::Slice(None),
+        );
+
+        gl.bind_framebuffer(glow::FRAMEBUFFER, Some(read_fbo));
+        gl.framebuffer_texture_2d(
+            glow::FRAMEBUFFER,
+            glow::COLOR_ATTACHMENT0,
+            glow::TEXTURE_2D,
+            Some(read_tex),
+            0,
+        );
+
+        gl.viewport(0, 0, width, height);
+
+        shader_manager.oklab2srgb.bind(gl);
+
+        // Identity Matrix
+        let identity: [f32; 16] = [
+            1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+        ];
+        if let Some(loc) = shader_manager.oklab2srgb.get_uniform(gl, "u_mvp") {
+            gl.uniform_matrix_4_f32_slice(Some(&loc), false, &identity);
+        }
+
+        // Already flipped in render, no need to flip again
+        if let Some(loc) = shader_manager.oklab2srgb.get_uniform(gl, "u_flip_y") {
+            gl.uniform_1_f32(Some(&loc), 0.0);
+        }
+
+        gl.active_texture(glow::TEXTURE0);
+        gl.bind_texture(glow::TEXTURE_2D, Some(root_fbo_texture));
+
+        let vao = gl.create_vertex_array().ok()?;
+        let vbo = gl.create_buffer().ok()?;
+        gl.bind_vertex_array(Some(vao));
+        gl.bind_buffer(glow::ARRAY_BUFFER, Some(vbo));
+
+        // Full screen quad
+        let vertices: [f32; 24] = [
+            -1.0, -1.0, 0.0, 0.0, 1.0, -1.0, 1.0, 0.0, -1.0, 1.0, 0.0, 1.0, -1.0, 1.0, 0.0, 1.0,
+            1.0, -1.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0,
+        ];
+        gl.buffer_data_u8_slice(
+            glow::ARRAY_BUFFER,
+            bytemuck::cast_slice(&vertices),
+            glow::STATIC_DRAW,
+        );
+
+        gl.enable_vertex_attrib_array(0);
+        gl.vertex_attrib_pointer_f32(0, 2, glow::FLOAT, false, 16, 0);
+        gl.enable_vertex_attrib_array(1);
+        gl.vertex_attrib_pointer_f32(1, 2, glow::FLOAT, false, 16, 8);
+
+        gl.draw_arrays(glow::TRIANGLES, 0, 6);
+        gl.finish();
+
+        let mut pixels = vec![0u8; (width * height * 4) as usize];
+        gl.pixel_store_i32(glow::PACK_ALIGNMENT, 1);
+        gl.read_pixels(
+            0,
+            0,
+            width,
+            height,
+            glow::RGBA,
+            glow::UNSIGNED_BYTE,
+            glow::PixelPackData::Slice(Some(&mut pixels)),
+        );
+
+        // 8. Cleanup
+        gl.bind_framebuffer(glow::FRAMEBUFFER, None);
+        gl.bind_vertex_array(None);
+        gl.delete_vertex_array(vao);
+        gl.delete_buffer(vbo);
+        gl.delete_framebuffer(read_fbo);
+        gl.delete_texture(read_tex);
+
+        Some(pixels)
+    }
 }

@@ -29,7 +29,7 @@ use adw::{
     prelude::{BoxExt, GtkWindowExt, RangeExt, ToggleButtonExt, WidgetExt},
     subclass::prelude::*,
 };
-use gtk::prelude::EditableExt;
+use gtk::{gio::prelude::ListModelExt, glib::object::CastNone, prelude::EditableExt};
 use std::{
     cell::{Cell, RefCell},
     collections::HashMap,
@@ -43,9 +43,10 @@ use uuid::Uuid;
 
 use crate::{
     components::{
-        canvas::{BrushCanvas, CanvasAction},
+        canvas::widget::{BrushCanvas, CanvasAction},
         color_chip::BrushColorChip,
         color_selector::BrushColorSelector,
+        color_wheel::BrushColorWheel,
         layer_item::BrushLayerItem,
         layer_tree::BrushLayerTree,
         utils::{color::to_rgba, editor_state::BrushEditorState, tools::BrushTool},
@@ -55,10 +56,6 @@ use crate::{
 };
 
 mod imp {
-
-    use gtk::{gio::prelude::ListModelExt, glib::object::CastNone};
-
-    use crate::components::color_wheel::BrushColorWheel;
 
     use super::*;
 
@@ -386,7 +383,7 @@ impl BrushEditor {
         glib::Object::new()
     }
 
-    fn current_project(&self) -> RefCell<BrushProject> {
+    fn current_project(&self) -> BrushProject {
         let canvas = self.current_page().unwrap();
         canvas.project_context()
     }
@@ -394,8 +391,7 @@ impl BrushEditor {
     // TODO: Linear time activation?
     fn activate_layer(&self, id: Uuid) {
         let imp = self.imp();
-        let project_rc = self.current_project();
-        let project = project_rc.borrow();
+        let project = self.current_project();
         let layer_widget_cache = imp.layer_widget_cache.borrow();
 
         if let Some(old_id) = *imp.current_layer.borrow()
@@ -446,8 +442,7 @@ impl BrushEditor {
     }
 
     fn sync_project(&self, canvas: &BrushCanvas) {
-        let canvas_project = canvas.project_context();
-        let project = canvas_project.borrow();
+        let project = canvas.project_context();
 
         let zoom = canvas.zoom();
         let rotation = canvas.rotation();
@@ -541,7 +536,8 @@ impl BrushEditor {
                 let result =
                     gtk::gio::spawn_blocking(move || open_project(Path::new(loc.as_str())))
                         .await
-                        .expect("Failed to finish save");
+                        .expect("Failed to open file");
+
                 match result {
                     Ok(p) => {
                         let canvas = BrushCanvas::from_project(
@@ -595,7 +591,6 @@ impl BrushEditor {
         if let Some(canvas) = self.current_page() {
             let cache = self.imp().layer_widget_cache.borrow();
             let project = self.current_project();
-            let project = project.borrow();
 
             if let Some(active) = canvas.imp().active_layer.get()
                 && let Some(layer) = project.find_layer(active)

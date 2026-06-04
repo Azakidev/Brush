@@ -1,29 +1,17 @@
-/* canvas.rs
+/* widget.rs
  *
  * Copyright 2026 FatDawlf
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program. If not, see <https://www.gnu.org/licenses/>.
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-use adw::{prelude::*, subclass::prelude::*};
-use glow::{Context, NativeVertexArray};
-use gtk::{
+use adw::{
     gdk,
     glib::{self, VariantTy, WeakRef, clone},
+    prelude::*,
+    subclass::prelude::*,
 };
+use glow::{Context, HasContext, NativeVertexArray};
 use libloading::Library;
 use zip::result::ZipError;
 
@@ -35,20 +23,22 @@ use std::{
     path::Path,
     rc::Rc,
     sync::{Arc, RwLock},
-    time::Instant,
+    time::Duration,
 };
+use strum::IntoEnumIterator;
 use uuid::Uuid;
 
 use crate::{
     components::{
+        canvas::utils::{capture_oklab_to_srgb_png, draw_stroke},
         editor::EditorAction,
         layer_item::BrushLayerItem,
         utils::{
-            canvas::draw_stroke,
             editor_state::BrushEditorState,
             renderer::{
                 buffer::LayerBuffer,
-                render::{get_or_create_root_buffer, render_pass, setup_gl},
+                frame_update::FrameUpdate,
+                render::{get_or_create_buffer, get_or_create_root_buffer, render_pass, setup_gl},
                 shader_manager::ShaderManager,
             },
             tools::BrushTool,
@@ -63,8 +53,6 @@ use crate::{
         rect::Rect,
     },
 };
-use std::time::Duration;
-use strum::IntoEnumIterator;
 
 mod imp {
     use super::*;
@@ -76,18 +64,24 @@ mod imp {
         // Template widgets
         #[template_child]
         pub canvas: TemplateChild<gtk::GLArea>,
+
         // Project context
         pub file_location: RefCell<Option<String>>,
         pub editor_state: OnceCell<Rc<RefCell<BrushEditorState>>>,
-        pub project: RefCell<BrushProject>,
+
+        pub project: Arc<RwLock<BrushProject>>,
         pub buffer_cache: RefCell<HashMap<Uuid, LayerBuffer>>,
         pub layer_widget_cache: RefCell<HashMap<Uuid, WeakRef<BrushLayerItem>>>,
+
         // Gl context
         pub gl_context: OnceCell<Context>,
         pub gl_lib: OnceCell<Library>,
         pub gl_shader_manager: OnceCell<RefCell<ShaderManager>>,
         pub gl_vao: OnceCell<NativeVertexArray>,
         pub gl_root_fbo: OnceCell<LayerBuffer>,
+
+        // pub gl_t_buffers: Arc<TripleBuffer>,
+
         // Viewport
         pub active_layer: Cell<Option<Uuid>>,
         pub zoom: Cell<f32>,
@@ -99,6 +93,7 @@ mod imp {
         pub stroke_mask: Arc<RwLock<Vec<u8>>>,
         pub last_position: Cell<(f64, f64)>,
         pub last_pressure: Cell<f64>,
+
         // Flags
         pub should_pan: Cell<bool>,
     }
@@ -127,10 +122,8 @@ mod imp {
 
             // Debug actions
             klass.install_action("canvas.print-state", None, move |canvas, _, _| {
-                println!(
-                    "Contents: {}",
-                    serde_json::to_string(&canvas.imp().project).unwrap()
-                )
+                let project = canvas.imp().project.read().unwrap().clone();
+                println!("Contents: {}", serde_json::to_string(&project).unwrap())
             });
         }
 
@@ -157,8 +150,10 @@ mod imp {
                 }
             }
 
+            // Init the painting mask by clearing it
             obj.clear_mask();
 
+            // Setup controllers
             obj.setup_motion_controller();
             obj.setup_scroll_controller();
             obj.setup_click_controller();
@@ -201,7 +196,8 @@ mod imp {
                         let _ = imp.gl_lib.set(gl_lib);
 
                         let gl = imp.gl_context.get().unwrap();
-                        let project = imp.project.borrow_mut();
+
+                        let project = imp.project.read().unwrap().clone();
                         let _root_fbo = unsafe { get_or_create_root_buffer(gl, &obj, &project) };
 
                         if let Some((shader_manager, vao)) = setup_gl(gl) {
@@ -211,80 +207,54 @@ mod imp {
                     }
                 ));
 
-                let weak_self = self.downgrade();
+                let weak_self = obj.downgrade();
                 canvas.connect_render(move |area, _context| {
                     let Some(obj) = weak_self.upgrade() else {
                         return glib::Propagation::Proceed;
                     };
-                    let win = (area.width() as f32, area.height() as f32);
 
-                    let obj = obj.obj();
                     let imp = obj.imp();
-                    let mut project = imp.project.borrow_mut();
-                    let mut cache = imp.buffer_cache.borrow_mut();
+
+                    let Ok(project) = imp.project.read() else {
+                        return glib::Propagation::Proceed;
+                    };
 
                     let gl = imp.gl_context.get().unwrap();
                     let shaders = imp.gl_shader_manager.get().unwrap();
                     let vao = imp.gl_vao.get().unwrap();
                     let root_fbo = unsafe { get_or_create_root_buffer(gl, &obj, &project) };
 
+                    let mut cache = imp.buffer_cache.borrow_mut();
                     let mut shaders = shaders.borrow_mut();
-                    let zoom = imp.zoom.get();
-                    let rotation = imp.rotation.get();
-                    let position = imp.position.get();
 
-                    let s = Instant::now();
+                    let win = (area.width() as f32, area.height() as f32);
+
+                    println!("Begin render pass");
+
                     render_pass(
                         gl,
                         *vao,
                         root_fbo,
                         &mut cache,
                         &mut shaders,
-                        &mut project,
+                        &project,
                         win,
-                        position,
-                        zoom,
-                        rotation,
+                        imp.position.get(),
+                        imp.zoom.get(),
+                        imp.rotation.get(),
                     );
-                    println!("Render in {:?}", s.elapsed());
 
-                    glib::Propagation::Stop
-                });
-
-                let weak_self = self.downgrade();
-                canvas.connect_unrealize(move |_area| {
-                    if let Some(obj) = weak_self.upgrade() {
-                        let Some(gl) = obj.gl_context.get() else {
-                            return;
-                        };
-
-                        let buffer_cache = obj.buffer_cache.borrow_mut();
-                        buffer_cache
-                            .iter()
-                            .for_each(|(_uuid, buf)| unsafe { buf.destroy(gl) });
-
-                        if let Some(root_buf) = obj.gl_root_fbo.get() {
-                            unsafe {
-                                root_buf.destroy(gl);
-                            }
-                        }
-
-                        if let Some(shader_manager) = obj.gl_shader_manager.get() {
-                            unsafe {
-                                shader_manager.borrow().destroy(gl);
-                            }
-                        }
-                    };
+                    glib::Propagation::Proceed
                 });
             }
 
             obj.connect_realize(|c| {
-                gtk::glib::spawn_future_local(clone!(
+                glib::spawn_future_local(glib::clone!(
                     #[weak]
                     c,
                     async move {
                         gtk::glib::timeout_future(Duration::from_millis(20)).await;
-                        c.imp().canvas.queue_draw();
+                        c.imp().canvas.queue_render();
                         c.zoom_to_fit();
                     }
                 ));
@@ -304,10 +274,12 @@ glib::wrapper! {
 impl BrushCanvas {
     pub fn new(editor_state: Rc<RefCell<BrushEditorState>>) -> Self {
         let obj: Self = glib::Object::new();
+
         obj.imp()
             .editor_state
             .set(editor_state)
             .expect("Editor state already set");
+
         obj
     }
 
@@ -317,14 +289,16 @@ impl BrushCanvas {
         loc: &str,
     ) -> Self {
         let obj: Self = glib::Object::new();
+        let imp = obj.imp();
+
         // Project setup
         let first_id = project.layers.first().map(|l| l.id());
-        obj.imp().project.replace(project);
-        obj.imp().file_location.replace(Some(loc.to_string()));
-        obj.imp().active_layer.replace(first_id);
+
+        *imp.project.write().unwrap() = project;
+        imp.file_location.replace(Some(loc.to_string()));
+        imp.active_layer.replace(first_id);
         // Editor state
-        obj.imp()
-            .editor_state
+        imp.editor_state
             .set(editor_state)
             .expect("Editor state already set");
 
@@ -332,8 +306,8 @@ impl BrushCanvas {
     }
 
     // Query
-    pub fn project_context(&self) -> RefCell<BrushProject> {
-        self.imp().project.clone()
+    pub fn project_context(&self) -> BrushProject {
+        self.imp().project.read().unwrap().clone()
     }
 
     pub fn widget_cache(&self) -> RefCell<HashMap<Uuid, WeakRef<BrushLayerItem>>> {
@@ -355,7 +329,7 @@ impl BrushCanvas {
     // Layer management
     fn new_pixel_layer(&self) {
         let id = {
-            let mut project = self.imp().project.borrow_mut();
+            let mut project = self.imp().project.write().unwrap();
 
             let name = "New pixel layer".to_owned();
             let width = project.width;
@@ -375,7 +349,8 @@ impl BrushCanvas {
 
     fn new_group_layer(&self) {
         let id = {
-            let mut project = self.imp().project.borrow_mut();
+            let mut project = self.imp().project.write().unwrap();
+
             let name = "New Group".to_owned();
             let layer = Layer::new_group(name);
             let id = layer.id();
@@ -391,25 +366,25 @@ impl BrushCanvas {
         if let Some(active_id) = self.imp().active_layer.get()
             && let Some(active_layer) = project.find_layer_mut(active_id)
         {
-            // If the active layer has children, append it to the layer
             if let Some(children) = active_layer.children() {
+                // If the active layer has children, append it to the layer
                 let idx = children
                     .iter()
                     .position(|r| r.id() == active_id)
                     .unwrap_or(0);
 
                 active_layer.append(idx, layer);
-                // If the parent of the active layer has children, append it to the parent
             } else if let Some(parent) = project.find_parent_mut(active_id)
                 && let Some(children) = parent.children()
             {
+                // If the parent of the active layer has children, append it to the parent
                 let idx = children
                     .iter()
                     .position(|r| r.id() == active_id)
                     .unwrap_or(0);
                 parent.append(idx, layer);
-                // If if doesn't have a parent, append it to the project in position
             } else {
+                // If if doesn't have a parent, append it to the project in position
                 let idx = project
                     .layers
                     .iter()
@@ -417,8 +392,8 @@ impl BrushCanvas {
                     .unwrap_or(0);
                 project.layers.insert(idx, layer);
             }
-            //If there's no active layer, push it to the beginning
         } else {
+            //If there's no active layer, push it to the beginning
             project.layers.push(layer);
         }
     }
@@ -430,18 +405,20 @@ impl BrushCanvas {
             project.remove_stale_widgets(id, &mut widget_cache);
         }
 
-        self.imp().canvas.queue_draw();
+        self.imp().canvas.queue_render();
     }
 
     fn remove_layer(&self) {
         let imp = self.imp();
-        let mut project = imp.project.borrow_mut();
+
+        let mut project = imp.project.write().unwrap();
+
         let mut widget_cache = imp.layer_widget_cache.borrow_mut();
         let mut buffer_cache = imp.buffer_cache.borrow_mut();
 
         if let Some(active_layer) = imp.active_layer.get() {
-            // If the active layer's parent...
-            // Is a group...
+            // If the active layer's parent…
+            // Is a group…
             if let Some(parent) = project.find_parent(active_layer)
                 && let Some(children) = parent.children()
             {
@@ -493,11 +470,12 @@ impl BrushCanvas {
             buffer_cache.remove(&active_layer);
         }
 
-        self.imp().canvas.queue_draw();
+        self.imp().canvas.queue_render();
     }
 
     fn move_layer_up(&self) {
-        let mut project = self.imp().project.borrow_mut();
+        let mut project = self.imp().project.write().unwrap();
+
         let mut widget_cache = self.imp().layer_widget_cache.borrow_mut();
         let mut buf_cache = self.imp().buffer_cache.borrow_mut();
 
@@ -605,11 +583,12 @@ impl BrushCanvas {
                 }
             }
         }
-        self.imp().canvas.queue_draw();
+        self.imp().canvas.queue_render();
     }
 
     fn move_layer_down(&self) {
-        let mut project = self.imp().project.borrow_mut();
+        let mut project = self.imp().project.write().unwrap();
+
         let mut widget_cache = self.imp().layer_widget_cache.borrow_mut();
         let mut buf_cache = self.imp().buffer_cache.borrow_mut();
 
@@ -717,144 +696,7 @@ impl BrushCanvas {
                 }
             }
         }
-        self.imp().canvas.queue_draw();
-    }
-
-    fn rename_layer(&self, uuid: Uuid, new_name: String, cache: &mut HashMap<Uuid, WeakRef<BrushLayerItem>>) {
-        let mut project = self.imp().project.borrow_mut();
-        project.rename_layer(uuid, new_name);
-
-        project.remove_stale_widgets(uuid, cache);
-    }
-
-    fn set_layer_opacity(&self, opacity: f32) {
-        let imp = self.imp();
-        let mut project = imp.project.borrow_mut();
-        let widget_cache = self.imp().layer_widget_cache.borrow_mut();
-
-        if let Some(active_id) = self.imp().active_layer.get()
-            && let Some(active_layer) = project.find_layer_mut(active_id)
-        {
-            active_layer.set_opacity(opacity);
-
-            if let Some(w) = widget_cache.get(&active_id)
-                && let Some(i) = w.upgrade()
-            {
-                i.update(Some(active_id), active_layer);
-            }
-        }
-        imp.canvas.queue_draw();
-    }
-
-    fn set_layer_blend(&self, blend_mode: BrushBlendMode) {
-        let imp = self.imp();
-        let mut project = imp.project.borrow_mut();
-        let widget_cache = self.imp().layer_widget_cache.borrow_mut();
-
-        if let Some(active_id) = self.imp().active_layer.get()
-            && let Some(active_layer) = project.find_layer_mut(active_id)
-        {
-            active_layer.set_blend_mode(blend_mode);
-
-            if let Some(w) = widget_cache.get(&active_id)
-                && let Some(i) = w.upgrade()
-            {
-                i.update(Some(active_id), active_layer);
-            }
-        }
-        imp.canvas.queue_draw();
-    }
-
-    fn toggle_visible(&self) {
-        let imp = self.imp();
-        let mut project = imp.project.borrow_mut();
-        let widget_cache = self.imp().layer_widget_cache.borrow_mut();
-
-        if let Some(active_id) = imp.active_layer.get()
-            && let Some(active_layer) = project.find_layer_mut(active_id)
-        {
-            active_layer.set_visible(!active_layer.visible());
-
-            if let Some(w) = widget_cache.get(&active_id)
-                && let Some(i) = w.upgrade()
-            {
-                i.update(Some(active_id), active_layer);
-            }
-        }
-        imp.canvas.queue_draw();
-    }
-
-    fn toggle_alpha_clip(&self) {
-        let imp = self.imp();
-        let mut project = imp.project.borrow_mut();
-        let widget_cache = self.imp().layer_widget_cache.borrow_mut();
-
-        if let Some(active_id) = imp.active_layer.get()
-            && let Some(active_layer) = project.find_layer_mut(active_id)
-        {
-            active_layer.set_alpha_clip(!active_layer.alpha_clip());
-
-            if let Some(w) = widget_cache.get(&active_id)
-                && let Some(i) = w.upgrade()
-            {
-                i.update(Some(active_id), active_layer);
-            }
-        }
-        imp.canvas.queue_draw();
-    }
-    fn toggle_alpha_lock(&self) {
-        let imp = self.imp();
-        let mut project = imp.project.borrow_mut();
-        let widget_cache = self.imp().layer_widget_cache.borrow_mut();
-
-        if let Some(active_id) = imp.active_layer.get()
-            && let Some(active_layer) = project.find_layer_mut(active_id)
-        {
-            active_layer.set_alpha_lock(!active_layer.alpha_lock());
-
-            if let Some(w) = widget_cache.get(&active_id)
-                && let Some(i) = w.upgrade()
-            {
-                i.update(Some(active_id), active_layer);
-            }
-        }
-        imp.canvas.queue_draw();
-    }
-    fn toggle_passthrough(&self) {
-        let imp = self.imp();
-        let mut project = imp.project.borrow_mut();
-        let widget_cache = self.imp().layer_widget_cache.borrow_mut();
-
-        if let Some(active_id) = imp.active_layer.get()
-            && let Some(active_layer) = project.find_layer_mut(active_id)
-        {
-            active_layer.set_passthrough(!active_layer.passthrough());
-
-            if let Some(w) = widget_cache.get(&active_id)
-                && let Some(i) = w.upgrade()
-            {
-                i.update(Some(active_id), active_layer);
-            }
-        }
-        imp.canvas.queue_draw();
-    }
-    fn toggle_lock(&self) {
-        let imp = self.imp();
-        let mut project = imp.project.borrow_mut();
-        let widget_cache = self.imp().layer_widget_cache.borrow_mut();
-
-        if let Some(active_id) = imp.active_layer.get()
-            && let Some(active_layer) = project.find_layer_mut(active_id)
-        {
-            active_layer.set_lock(!active_layer.lock());
-
-            if let Some(w) = widget_cache.get(&active_id)
-                && let Some(i) = w.upgrade()
-            {
-                i.update(Some(active_id), active_layer);
-            }
-        }
-        imp.canvas.queue_draw();
+        self.imp().canvas.queue_render();
     }
 
     fn save_project(&self, project: BrushProject, location: Option<String>) {
@@ -958,60 +800,6 @@ impl BrushCanvas {
         }
     }
 
-    // Viewport control
-    fn zoom_by(&self, factor: f32) {
-        let new_zoom = (self.imp().zoom.get() + factor).clamp(0.1, 10f32);
-        self.imp().zoom.set(new_zoom);
-        self.imp().canvas.queue_draw();
-    }
-
-    fn zoom_to(&self, zoom: f32) {
-        self.imp().zoom.set(zoom.clamp(0.1, 10f32));
-        self.imp().canvas.queue_draw();
-    }
-
-    fn move_by(&self, dx: f64, dy: f64) {
-        let (x, y) = self.imp().position.get();
-        let zoom = self.zoom() as f64;
-
-        self.imp().position.set((x + (dx * zoom), y + (dy * zoom)));
-        self.imp().canvas.queue_draw();
-    }
-
-    fn move_to(&self, x: f64, y: f64) {
-        self.imp().position.set((x, y));
-        self.imp().canvas.queue_draw();
-    }
-
-    fn rotate_by(&self, radians: f32) {
-        let new_rot = (self.imp().rotation.get() + radians) % (PI * 2f32);
-        self.imp().rotation.set(new_rot);
-        self.imp().canvas.queue_draw();
-    }
-
-    fn rotate_to(&self, radians: f32) {
-        self.imp().rotation.set(radians);
-        self.imp().canvas.queue_draw();
-    }
-
-    fn zoom_to_fit(&self) {
-        let imp = self.imp();
-        let (canvas_width, canvas_height) = (
-            imp.project.borrow().width as f32,
-            imp.project.borrow().height as f32,
-        );
-        let (viewport_width, viewport_height) = (self.width() as f32, self.height() as f32);
-
-        let scale_x = viewport_width / canvas_width;
-        let scale_y = viewport_height / canvas_height;
-
-        let scale = scale_x.min(scale_y);
-
-        self.zoom_to(scale);
-        self.move_to(0., 0.);
-        imp.canvas.get().queue_draw();
-    }
-
     fn setup_rotate_controller(&self) {
         let controller = gtk::GestureRotate::new();
 
@@ -1060,7 +848,7 @@ impl BrushCanvas {
                     obj.rotate_to(orig_rot + angle);
                 }
 
-                obj.imp().canvas.queue_draw();
+                obj.imp().canvas.queue_render();
             }
         ));
 
@@ -1123,7 +911,7 @@ impl BrushCanvas {
                     obj.move_to(new_x, new_y);
                 }
 
-                obj.imp().canvas.queue_draw();
+                obj.imp().canvas.queue_render();
             }
         ));
 
@@ -1140,8 +928,6 @@ impl BrushCanvas {
                 obj.clear_mask();
 
                 if let Some(state) = obj.imp().editor_state.get() {
-                    let mask = obj.imp().stroke_mask.clone();
-
                     let state = state.borrow();
                     let tool = state.tool.borrow();
 
@@ -1161,46 +947,7 @@ impl BrushCanvas {
                                     .axis(gdk::AxisUse::Ytilt)
                                     .unwrap_or(0.0)
                                     .clamp(-1f64, 1f64);
-                                glib::spawn_future_local(glib::clone!(
-                                    #[weak (rename_to = c)]
-                                    obj,
-                                    #[strong]
-                                    state,
-                                    #[strong]
-                                    mask,
-                                    #[strong]
-                                    pressure,
-                                    async move {
-                                        let mut project = c.imp().project.borrow_mut();
-                                        let a_id = c.imp().active_layer.get();
-                                        let screen = (c.width() as f32, c.height() as f32);
-                                        let position = c.imp().position.get();
-                                        let zoom = c.zoom();
-                                        let rotation = c.rotation();
-                                        let cp = c.imp().mouse_pos.get();
-                                        let lp = c.imp().last_position.get();
-                                        let l_pressure = c.imp().last_pressure.get();
-
-                                        draw_stroke(
-                                            &mut project,
-                                            a_id,
-                                            &state,
-                                            mask,
-                                            pressure,
-                                            l_pressure,
-                                            cp,
-                                            lp,
-                                            screen,
-                                            position,
-                                            zoom,
-                                            rotation,
-                                        )
-                                        .await;
-
-                                        c.imp().last_position.replace(c.imp().mouse_pos.get());
-                                        c.imp().last_pressure.set(pressure);
-                                    }
-                                ));
+                                obj.dispatch_stroke_worker(pressure);
                             }
                         }
                         _ => {
@@ -1208,11 +955,10 @@ impl BrushCanvas {
                         }
                     }
                 }
-
-                obj.imp().canvas.queue_draw();
             }
         ));
 
+        // Reserved for future expansion
         controller.connect_released(clone!(
             #[weak(rename_to = obj)]
             self,
@@ -1222,13 +968,7 @@ impl BrushCanvas {
                     let tool = state.tool.borrow();
 
                     match *tool {
-                        BrushTool::Move => {} // NO OP
-                        BrushTool::Brush => {
-                            obj.update_layer();
-                        }
-                        _ => {
-                            println!("Tool not implemented!")
-                        }
+                        _ => {} // NO OP
                     }
                 }
             }
@@ -1319,8 +1059,6 @@ impl BrushCanvas {
                 let (orig_x, orig_y) = start_pos.get();
 
                 if let Some(state) = obj.imp().editor_state.get() {
-                    let mask = obj.imp().stroke_mask.clone();
-
                     let state = state.borrow();
 
                     let tool = if obj.imp().should_pan.get() {
@@ -1336,46 +1074,7 @@ impl BrushCanvas {
                                 let pressure = event.axis(gdk::AxisUse::Pressure).unwrap_or(1.);
                                 let _x_tilt = event.axis(gdk::AxisUse::Xtilt).unwrap_or(0.);
                                 let _y_tilt = event.axis(gdk::AxisUse::Ytilt).unwrap_or(0.);
-                                glib::spawn_future_local(glib::clone!(
-                                    #[weak (rename_to = c)]
-                                    obj,
-                                    #[strong]
-                                    state,
-                                    #[strong]
-                                    mask,
-                                    #[strong]
-                                    pressure,
-                                    async move {
-                                        let mut project = c.imp().project.borrow_mut();
-                                        let a_id = c.imp().active_layer.get();
-                                        let screen = (c.width() as f32, c.height() as f32);
-                                        let position = c.imp().position.get();
-                                        let zoom = c.zoom();
-                                        let rotation = c.rotation();
-                                        let cp = c.imp().mouse_pos.get();
-                                        let lp = c.imp().last_position.get();
-                                        let l_pressure = c.imp().last_pressure.get();
-
-                                        draw_stroke(
-                                            &mut project,
-                                            a_id,
-                                            &state,
-                                            mask,
-                                            pressure,
-                                            l_pressure,
-                                            cp,
-                                            lp,
-                                            screen,
-                                            position,
-                                            zoom,
-                                            rotation,
-                                        )
-                                        .await;
-
-                                        c.imp().last_position.replace(c.imp().mouse_pos.get());
-                                        c.imp().last_pressure.set(pressure);
-                                    }
-                                ));
+                                obj.dispatch_stroke_worker(pressure);
                             }
                         }
                         _ => {
@@ -1383,8 +1082,6 @@ impl BrushCanvas {
                         }
                     }
                 }
-
-                obj.imp().canvas.queue_draw();
             }
         ));
 
@@ -1397,17 +1094,9 @@ impl BrushCanvas {
                     let tool = state.tool.borrow();
 
                     match *tool {
-                        BrushTool::Move => {} // No-op
-                        BrushTool::Brush => {
-                            obj.update_layer();
-                        }
-                        _ => {
-                            println!("Tool not implemented!")
-                        }
+                        _ => {} // NO OP
                     }
                 }
-
-                obj.imp().canvas.queue_draw();
             }
         ));
 
@@ -1423,6 +1112,7 @@ impl BrushCanvas {
                 obj.imp().mouse_pos.set((x, y));
             }
         });
+
         self.add_controller(motion);
     }
 
@@ -1439,23 +1129,25 @@ impl BrushCanvas {
             let imp = obj.imp();
 
             let (win_w, win_h) = (obj.width() as f64, obj.height() as f64);
-
             let (mouse_x, mouse_y) = imp.mouse_pos.get();
 
             let old_zoom = imp.zoom.get() as f64;
             let (old_x, old_y) = imp.position.get();
 
             let zoom_mult = if dy < 0.0 { 1.1 } else { 0.9 };
-            let zoom = (old_zoom * zoom_mult).clamp(0.001, 100.0);
+            let zoom = (old_zoom * zoom_mult).clamp(0.1, 10.);
 
-            let factor = zoom / old_zoom;
+            if zoom != old_zoom {
+                let factor = zoom / old_zoom;
 
-            let new_x = mouse_x - win_w / 2.0 - factor * (mouse_x - win_w / 2.0 - old_x);
-            let new_y = mouse_y - win_h / 2.0 - factor * (mouse_y - win_h / 2.0 - old_y);
+                let new_x = mouse_x - win_w / 2.0 - factor * (mouse_x - win_w / 2.0 - old_x);
+                let new_y = mouse_y - win_h / 2.0 - factor * (mouse_y - win_h / 2.0 - old_y);
 
-            obj.zoom_to(zoom as f32);
-            obj.move_to(new_x, new_y);
-            obj.imp().canvas.queue_draw();
+                obj.zoom_to(zoom as f32);
+                obj.move_to(new_x, new_y);
+
+                obj.imp().canvas.queue_render();
+            }
 
             glib::Propagation::Stop
         });
@@ -1463,160 +1155,171 @@ impl BrushCanvas {
         self.add_controller(scroll);
     }
 
-    fn update_layer(&self) {
-        let mut project = self.imp().project.borrow_mut();
-
-        if let Some(acive_id) = self.imp().active_layer.get()
-            && let Some(layer) = project.find_layer_mut(acive_id)
-        {
-            layer.set_dirty(true);
-            layer.set_dirty_rect(Some(Rect {
-                x: 0,
-                y: 0,
-                w: layer.width() as i32,
-                h: layer.height() as i32,
-            }));
-        }
-    }
-
     fn clear_layer(&self) {
-        let mut project = self.imp().project.borrow_mut();
+        let imp = self.imp();
 
-        if let Some(acive_id) = self.imp().active_layer.get()
-            && let Some(layer) = project.find_layer_mut(acive_id)
+        let gl = imp.gl_context.get().unwrap();
+        let mut project = imp.project.write().unwrap();
+        let mut cache = imp.buffer_cache.borrow_mut();
+
+        if let Some(active_id) = imp.active_layer.get()
+            && let Some(layer) = project.find_layer_mut(active_id)
         {
             layer.clear();
-            layer.set_dirty(true);
-            layer.set_dirty_rect(Some(Rect {
-                x: 0,
-                y: 0,
-                w: layer.width() as i32,
-                h: layer.height() as i32,
-            }));
-        }
+            unsafe {
+                let buffer = get_or_create_buffer(&mut cache, gl, layer);
+                let root_fbo = imp.gl_root_fbo.get().expect("Root FBO should exist");
 
-        self.imp().canvas.queue_draw();
+                gl.bind_framebuffer(glow::FRAMEBUFFER, Some(buffer.framebuffer));
+                gl.viewport(0, 0, layer.width() as i32, layer.height() as i32);
+
+                gl.clear_color(0.0, 0.0, 0.0, 0.0);
+                gl.clear(glow::COLOR_BUFFER_BIT);
+                gl.bind_framebuffer(glow::FRAMEBUFFER, Some(root_fbo.framebuffer));
+            }
+        }
+        imp.canvas.queue_render();
     }
 
     fn clear_mask(&self) {
-        let project = self.imp().project.borrow();
+        let project = self.imp().project.read().unwrap();
         let size = project.width * project.height;
 
         let mut mask = self.imp().stroke_mask.write().unwrap();
         *mask = vec![0; size as usize];
     }
-}
 
-unsafe fn capture_oklab_to_srgb_png(
-    gl: &glow::Context,
-    root_fbo_texture: glow::Texture,
-    width: i32,
-    height: i32,
-    shader_manager: &mut ShaderManager, // Adjust based on your actual struct name
-) -> Option<Vec<u8>> {
-    unsafe {
-        use glow::HasContext;
+    pub unsafe fn sync_layer_to_gpu(
+        &self,
+        gl: &glow::Context,
+        cache: &mut HashMap<Uuid, LayerBuffer>,
+        layer_id: Uuid,
+        rect: Rect,
+    ) {
+        let mut project = self.imp().project.write().unwrap();
+        let canvas = &self.imp().canvas;
 
-        let read_fbo = gl.create_framebuffer().ok()?;
-        let read_tex = gl.create_texture().ok()?;
+        if let Some(layer) = project.find_layer_mut(layer_id) {
+            let buffer = get_or_create_buffer(cache, gl, layer);
 
-        gl.bind_texture(glow::TEXTURE_2D, Some(read_tex));
-        gl.tex_parameter_i32(
-            glow::TEXTURE_2D,
-            glow::TEXTURE_MIN_FILTER,
-            glow::LINEAR as i32,
-        );
-        gl.tex_parameter_i32(
-            glow::TEXTURE_2D,
-            glow::TEXTURE_MAG_FILTER,
-            glow::LINEAR as i32,
-        );
-        gl.tex_image_2d(
-            glow::TEXTURE_2D,
-            0,
-            glow::RGBA8 as i32,
-            width,
-            height,
-            0,
-            glow::RGBA,
-            glow::UNSIGNED_BYTE,
-            glow::PixelUnpackData::Slice(None),
-        );
+            if let Some(pixels) = layer.pixel_data() {
+                unsafe {
+                    gl.bind_texture(glow::TEXTURE_2D, Some(buffer.texture));
 
-        gl.bind_framebuffer(glow::FRAMEBUFFER, Some(read_fbo));
-        gl.framebuffer_texture_2d(
-            glow::FRAMEBUFFER,
-            glow::COLOR_ATTACHMENT0,
-            glow::TEXTURE_2D,
-            Some(read_tex),
-            0,
-        );
+                    // Set byte-row alignment to match the master layer bounds
+                    gl.pixel_store_i32(glow::UNPACK_ROW_LENGTH, layer.width() as i32);
+                    gl.pixel_store_i32(glow::UNPACK_SKIP_PIXELS, rect.x);
+                    gl.pixel_store_i32(glow::UNPACK_SKIP_ROWS, rect.y);
 
-        gl.viewport(0, 0, width, height);
+                    let bytes = bytemuck::cast_slice(pixels);
 
-        shader_manager.oklab2srgb.bind(gl);
+                    gl.tex_sub_image_2d(
+                        glow::TEXTURE_2D,
+                        0,
+                        rect.x,
+                        rect.y,
+                        rect.w,
+                        rect.h,
+                        glow::RGBA,
+                        glow::FLOAT,
+                        glow::PixelUnpackData::Slice(Some(bytes)),
+                    );
 
-        // Identity Matrix
-        let identity: [f32; 16] = [
-            1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0,
-        ];
-        if let Some(loc) = shader_manager.oklab2srgb.get_uniform(gl, "u_mvp") {
-            gl.uniform_matrix_4_f32_slice(Some(&loc), false, &identity);
+                    // Clear stride rule to keep composition clean
+                    gl.pixel_store_i32(glow::UNPACK_ROW_LENGTH, 0);
+                    gl.pixel_store_i32(glow::UNPACK_SKIP_PIXELS, 0);
+                    gl.pixel_store_i32(glow::UNPACK_SKIP_ROWS, 0);
+
+                    // Reset the dirty
+                    layer.set_dirty(false);
+                    layer.set_dirty_rect(None);
+                }
+                canvas.queue_render();
+            }
         }
+    }
 
-        // Already flipped in render, no need to flip again
-        if let Some(loc) = shader_manager.oklab2srgb.get_uniform(gl, "u_flip_y") {
-            gl.uniform_1_f32(Some(&loc), 0.0);
-        }
+    pub fn dispatch_stroke_worker(&self, pressure: f64) {
+        let imp = self.imp();
 
-        gl.active_texture(glow::TEXTURE0);
-        gl.bind_texture(glow::TEXTURE_2D, Some(root_fbo_texture));
+        let Some(active_layer_id) = imp.active_layer.get() else {
+            return;
+        };
+        let Some(editor_state_rc) = imp.editor_state.get() else {
+            return;
+        };
 
-        let vao = gl.create_vertex_array().ok()?;
-        let vbo = gl.create_buffer().ok()?;
-        gl.bind_vertex_array(Some(vao));
-        gl.bind_buffer(glow::ARRAY_BUFFER, Some(vbo));
+        // Capture thread-local snapshots synchronously on the main thread
+        let editor_state_snapshot = editor_state_rc.borrow().clone();
+        let screen = (self.width() as f32, self.height() as f32);
+        let position = imp.position.get();
+        let zoom = self.zoom();
+        let rotation = self.rotation();
+        let cp = imp.mouse_pos.get();
+        let lp = imp.last_position.get();
+        let l_pressure = imp.last_pressure.get();
 
-        // Full screen quad
-        let vertices: [f32; 24] = [
-            -1.0, -1.0, 0.0, 0.0, 1.0, -1.0, 1.0, 0.0, -1.0, 1.0, 0.0, 1.0, -1.0, 1.0, 0.0, 1.0,
-            1.0, -1.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0,
-        ];
-        gl.buffer_data_u8_slice(
-            glow::ARRAY_BUFFER,
-            bytemuck::cast_slice(&vertices),
-            glow::STATIC_DRAW,
-        );
+        // Clone atomic pointers for safe cross-thread sharing
+        let project_arc = Arc::clone(&imp.project);
+        let mask_arc = Arc::clone(&imp.stroke_mask);
 
-        gl.enable_vertex_attrib_array(0);
-        gl.vertex_attrib_pointer_f32(0, 2, glow::FLOAT, false, 16, 0);
-        gl.enable_vertex_attrib_array(1);
-        gl.vertex_attrib_pointer_f32(1, 2, glow::FLOAT, false, 16, 8);
+        // Save current positions into history immediately on the main thread
+        imp.last_position.replace(cp);
+        imp.last_pressure.set(pressure);
 
-        gl.draw_arrays(glow::TRIANGLES, 0, 6);
-        gl.finish();
+        let (sender, receiver) = async_channel::bounded::<FrameUpdate>(1);
 
-        let mut pixels = vec![0u8; (width * height * 4) as usize];
-        gl.pixel_store_i32(glow::PACK_ALIGNMENT, 1);
-        gl.read_pixels(
-            0,
-            0,
-            width,
-            height,
-            glow::RGBA,
-            glow::UNSIGNED_BYTE,
-            glow::PixelPackData::Slice(Some(&mut pixels)),
-        );
+        glib::spawn_future_local(clone!(
+            #[weak(rename_to = canvas)]
+            self,
+            async move {
+                let imp = canvas.imp();
 
-        // 8. Cleanup
-        gl.bind_framebuffer(glow::FRAMEBUFFER, None);
-        gl.bind_vertex_array(None);
-        gl.delete_vertex_array(vao);
-        gl.delete_buffer(vbo);
-        gl.delete_framebuffer(read_fbo);
-        gl.delete_texture(read_tex);
+                while let Ok(update) = receiver.recv().await {
+                    let gl = imp.gl_context.get().unwrap();
+                    let mut cache = imp.buffer_cache.borrow_mut();
 
-        Some(pixels)
+                    unsafe {
+                        canvas.sync_layer_to_gpu(
+                            gl,
+                            &mut cache,
+                            update.dirty_layer_id,
+                            update.rect,
+                        );
+                    }
+                }
+            }
+        ));
+
+        rayon::spawn(move || {
+            if let Ok(mut project) = project_arc.try_write() {
+                // Execute stroke math out-of-thread
+                futures::executor::block_on(draw_stroke(
+                    &mut *project,
+                    Some(active_layer_id),
+                    &editor_state_snapshot,
+                    mask_arc,
+                    pressure,
+                    l_pressure,
+                    cp,
+                    lp,
+                    screen,
+                    position,
+                    zoom,
+                    rotation,
+                ));
+
+                if let Some(layer) = project.find_layer(active_layer_id) {
+                    let final_update = FrameUpdate {
+                        dirty_layer_id: active_layer_id,
+                        rect: layer.dirty_rect().unwrap_or_default(),
+                    };
+
+                    // Ship the data across the bridge. This automatically alerts the main thread.
+                    let _ = futures::executor::block_on(sender.send(final_update).into_future());
+                }
+            }
+        });
     }
 }
 
@@ -1745,7 +1448,7 @@ impl CanvasAction {
                 // Project handling
                 Self::SaveProject => {
                     klass.install_action(&action, None, |c, _, _| {
-                        let project = c.imp().project.borrow().clone();
+                        let project = c.imp().project.read().unwrap().clone();
                         c.save_project(project, None);
                     });
 
@@ -1753,7 +1456,7 @@ impl CanvasAction {
                 }
                 Self::SaveProjectAs => {
                     klass.install_action(&action, None, |c, _, _| {
-                        let project = c.imp().project.borrow().clone();
+                        let project = c.imp().project.read().unwrap().clone();
                         c.save_project_as(project, true);
                     });
 
@@ -1765,7 +1468,7 @@ impl CanvasAction {
                 }
                 Self::ExportProjectAs => {
                     klass.install_action(&action, None, |c, _, _| {
-                        let project = c.imp().project.borrow().clone();
+                        let project = c.imp().project.read().unwrap().clone();
                         c.save_project_as(project, false);
                     });
 

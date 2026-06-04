@@ -2,19 +2,6 @@
  *
  * Copyright 2026 FatDawlf
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
- *
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
@@ -26,7 +13,7 @@ use uuid::Uuid;
 
 use crate::{
     components::{
-        canvas::BrushCanvas,
+        canvas::widget::BrushCanvas,
         utils::renderer::{
             buffer::LayerBuffer, shader_manager::ShaderManager, utils::clean_unused_buffers,
         },
@@ -74,7 +61,7 @@ pub fn render_pass(
     root_fbo: &LayerBuffer,
     cache: &mut HashMap<Uuid, LayerBuffer>,
     shaders: &mut ShaderManager,
-    project: &mut BrushProject,
+    project: &BrushProject,
     (win_w, win_h): (f32, f32),
     (pos_x, pos_y): (f64, f64),
     zoom: f32,
@@ -95,8 +82,7 @@ pub fn render_pass(
 
         gl.bind_vertex_array(Some(vao));
 
-        // Create root FBO and clear it
-
+        // Clear root FBO
         gl.bind_framebuffer(glow::FRAMEBUFFER, Some(root_fbo.framebuffer));
         gl.viewport(0, 0, pw, ph);
 
@@ -115,7 +101,7 @@ pub fn render_pass(
             root_fbo.framebuffer,
             &root_mvp,
             (pw, ph),
-            &mut project.layers,
+            &project.layers,
             cache,
         );
 
@@ -159,10 +145,10 @@ unsafe fn render_layer_tree(
     parent_fbo: NativeFramebuffer,
     parent_mvp: &glam::Mat4,
     (parent_w, parent_h): (i32, i32),
-    layers: &mut [Layer],
+    layers: &[Layer],
     cache: &mut HashMap<Uuid, LayerBuffer>,
 ) {
-    let tree: Vec<&mut Layer> = layers.iter_mut().rev().collect();
+    let tree: Vec<&Layer> = layers.iter().rev().collect();
     for layer in tree {
         if !layer.visible() {
             continue;
@@ -170,52 +156,15 @@ unsafe fn render_layer_tree(
 
         match layer {
             Layer::Pixel(_) => {
-                let buffer = get_or_create_buffer(cache, gl, layer);
-
-                if layer.is_dirty()
-                    && let Some(rect) = layer.dirty_rect()
-                {
-                    unsafe {
-                        gl.bind_texture(glow::TEXTURE_2D, Some(buffer.texture));
-
-                        gl.pixel_store_i32(glow::UNPACK_ROW_LENGTH, layer.width() as i32);
-                        gl.pixel_store_i32(glow::UNPACK_SKIP_PIXELS, rect.x);
-                        gl.pixel_store_i32(glow::UNPACK_SKIP_ROWS, rect.y);
-                    }
-
-                    if let Some(colors) = layer.pixel_data() {
-                        let btyes = bytemuck::cast_slice(colors);
-
-                        unsafe {
-                            gl.tex_sub_image_2d(
-                                glow::TEXTURE_2D,
-                                0,
-                                rect.x,
-                                rect.y,
-                                rect.w,
-                                rect.h,
-                                glow::RGBA,
-                                glow::FLOAT,
-                                glow::PixelUnpackData::Slice(Some(btyes)),
-                            );
-
-                            gl.pixel_store_i32(glow::UNPACK_ROW_LENGTH, 0);
-                            gl.pixel_store_i32(glow::UNPACK_SKIP_PIXELS, 0);
-                            gl.pixel_store_i32(glow::UNPACK_SKIP_ROWS, 0);
-                        }
-
-                        // Reset the dirty
-                        layer.set_dirty(false);
-                        layer.set_dirty_rect(None);
-                    }
-                }
+                let buffer = get_or_create_buffer(cache, gl, &layer);
 
                 unsafe {
-                    composite_buffer(gl, &buffer, layer, shaders, parent_mvp);
+                    composite_buffer(gl, &buffer, &layer, shaders, parent_mvp);
                 }
             }
             Layer::Group(_) => {
-                layer.resize_group();
+                // TODO: Measure somewhere else where you can get a mutable reference
+                // layer.resize_group();
 
                 let (gw, gh) = (layer.width() as i32, layer.height() as i32);
                 let (gx, gy) = (layer.x() as f32, layer.y() as f32);
@@ -224,7 +173,7 @@ unsafe fn render_layer_tree(
                     continue;
                 } // Skip empty groups
 
-                let group_buffer = get_or_create_buffer(cache, gl, layer);
+                let group_buffer = get_or_create_buffer(cache, gl, &layer);
 
                 if !layer.passthrough() {
                     unsafe {
@@ -243,7 +192,7 @@ unsafe fn render_layer_tree(
                     let group_view = glam::Mat4::from_translation(glam::vec3(gx, gy, 0.0));
                     let group_mvp = group_proj * group_view;
 
-                    if let Some(children) = layer.children_mut() {
+                    if let Some(children) = layer.children() {
                         unsafe {
                             render_layer_tree(
                                 gl,
@@ -262,12 +211,12 @@ unsafe fn render_layer_tree(
                         gl.bind_framebuffer(glow::FRAMEBUFFER, Some(parent_fbo));
                         gl.viewport(0, 0, parent_w, parent_h);
 
-                        composite_buffer(gl, &group_buffer, layer, shaders, parent_mvp);
+                        composite_buffer(gl, &group_buffer, &layer, shaders, parent_mvp);
                     }
                 } else {
                     // When passthrough is active, layers are rendered on the parent directly
                     // without taking into account the group buffer
-                    if let Some(children) = layer.children_mut() {
+                    if let Some(children) = &layer.children() {
                         unsafe {
                             render_layer_tree(
                                 gl,
